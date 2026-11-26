@@ -1,13 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { clamp, rating, grade, completionPercent, makeCounter, updateCounter, observedCount, formQuality } from './scoring.js';
+import { EXERCISES } from './programs.js';
+import { createAdvancedUI } from './advanced-ui.js';
+import { extraMetrics, updateExtraCounter, recognizeExercise } from './extra-exercises.js';
 
 const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-const niceExercise = { squat: 'Squats', pushup: 'Push-ups', plank: 'Plank' };
-const targetDefaults = { squat: 10, pushup: 5, plank: 30 };
+const niceExercise = Object.fromEntries(Object.entries(EXERCISES).map(([code,data])=>[code,data.label]));
+const targetDefaults = Object.fromEntries(Object.entries(EXERCISES).map(([code,data])=>[code,data.target]));
 let me = null;
 let profile = null;
 let currentView = 'home';
@@ -26,6 +29,8 @@ let lastFrame = -1;
 let lastInference = 0;
 let poseModule = null;
 let nextToastTimer;
+let advanced=null;
+let recognitionHint='';
 
 function toast(message, error = false) {
   const el = $('notice');
@@ -71,6 +76,7 @@ async function refreshUser() {
     else profile = r.data;
   }
   updateIdentity();
+  advanced?.loadPrefs();
   await loadOverview();
 }
 function switchAuth() {
@@ -115,10 +121,12 @@ async function submitAuth(event) {
 async function loadOverview() {
   if (!me) {
     $('stat-workouts').textContent='—';$('stat-best').textContent='—';$('stat-last').textContent='—';
+    advanced?.setHistory([]);
     return;
   }
   const { data, error } = await api.from('workouts').select('exercise,rating,created_at').eq('user_id',me.id).order('created_at',{ascending:false}).limit(500);
   if (error) { toast(`Unable to load progress: ${error.message}`,true); return; }
+  advanced?.setHistory([...data].reverse());
   $('stat-workouts').textContent=String(data.length);
   $('stat-best').textContent=data.length ? `${Math.max(...data.map(x=>x.rating))}/100` : '—';
   $('stat-last').textContent=data.length ? niceExercise[data[0].exercise] : '—';
@@ -166,7 +174,7 @@ function selectExercise(next) {
   target=targetDefaults[next];
   $('exercise-select').value=next;
   $('target-input').value=target;
-  $('target-unit').textContent=next==='plank'?'seconds':'repetitions';
+  $('target-unit').textContent=EXERCISES[next]?.unit||'repetitions';
   $('live-unit').textContent=next==='plank'?'VALID SECONDS':'REPETITIONS';
   showView('workout');
 }
@@ -204,6 +212,10 @@ async function startWorkout() {
     $('camera-status').textContent='LOADING POSE TRACKING…';
     renderer=await makeLandmarker();
     counter=makeCounter(exercise);
+    if(advanced?.getState().plan){
+      // Program set already populated the desired target before camera initialization.
+      target=Number($('target-input').value);
+    }
     startedAt=performance.now()/1000;
     lastFrame=-1;lastInference=0;
     active=true;
@@ -240,8 +252,19 @@ function tick(timestamp) {
         drawer.drawConnectors(points,renderer.PoseLandmarker.POSE_CONNECTIONS,{color:'#c6f36b',lineWidth:3});
         drawer.drawLandmarks(points,{color:'#ffad6a',fillColor:'#ffad6a',radius:3});
       }
-      const m=getMetrics(points);
-      updateCounter(counter,m,timestamp/1000);
+      const oldReps=counter?.reps??0;
+      const m=['lunge','curl','jack'].includes(exercise)?extraMetrics(points,exercise):getMetrics(points);
+      if(['lunge','curl','jack'].includes(exercise))updateExtraCounter(counter,m,timestamp/1000);
+      else updateCounter(counter,m,timestamp/1000);
+      advanced?.onFrame(points,m,counter,timestamp/1000);
+      advanced?.onRep(oldReps,counter.reps,counter,timestamp/1000);
+      const hint=recognizeExercise(points);
+      recognitionHint=hint.exercise==='idle'?'Movement not identified':('Possible '+(niceExercise[hint.exercise]||hint.exercise));
+      if(advanced?.getState().plan && observedCount(counter)>=target){
+        // Avoid completing the same set twice from successive video frames.
+        void finishWorkout();
+        return;
+      }
       $('pose-state').textContent=m?.confidence>=.45?'BODY TRACKED':'MOVE INTO FRAME';
       setLiveData();
     }catch(e){
@@ -261,9 +284,12 @@ function setLiveData(){
   $('live-quality').textContent=counter.samples?`${formQuality(counter)} / 100`:'—';
   $('live-tracking').textContent=counter.samples?`${counter.samples} frames`:'Waiting';
   $('coach-feedback').textContent=counter.feedback;
+  const status = $('advanced-recognition-status');
+  if(status)status.textContent=recognitionHint;
 }
 function formatTime(seconds){const n=Math.max(0,Math.floor(seconds));return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;}
 function stopCamera(){
+  advanced?.onStop();
   active=false;
   cancelAnimationFrame(requestId);
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
@@ -294,7 +320,11 @@ async function finishWorkout(){
   $('summary-quality').textContent=`${quality}%`;
   $('summary-completion').textContent=`${completion}%`;
   $('summary-leaders').innerHTML='';
-  $('summary-save-status').textContent=me?'Saving your session…':'Preview mode: this session was not saved.';
+  const detail={exercise:exerciseUsed,reps:Math.round(counter.reps),valid_seconds:counter.validSeconds,
+    target,form_quality:quality,completion,score,observed:counter.samples,
+    goodSeconds:Math.round(counter.samples*quality/100)};
+  const inPlan=advanced?.onCompleted(detail);
+  $('summary-save-status').textContent=me?'Saving your session…':'Guest demo: this exercise was not saved.';
   $('summary-dialog').showModal();
   if(!me)return;
   const {error}=await api.from('workouts').insert({
@@ -334,11 +364,38 @@ function wireEvents(){
     me=null;profile=null;guestMode=true;updateIdentity();await loadOverview();showView('home');
     toast('Signed out. Guest demo remains available without saving sessions.');
   });
-  $('summary-done').addEventListener('click',()=>$('summary-dialog').close());
+  $('summary-done').addEventListener('click',()=>{
+    $('summary-dialog').close();
+    if(advanced?.getState().plan){
+      showView('workout');
+      $('camera-status').textContent='PREPARE NEXT EXERCISE';
+    }
+  });
   $('summary-close').addEventListener('click',()=>$('summary-dialog').close());
   window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
 }
 async function init(){
+  advanced=createAdvancedUI({
+    showView,selectExercise,
+    getExercise:()=>exercise,
+    getUser:()=>me,
+    isActive:()=>active,
+    toast,
+    startRecognition:()=>{
+      showView('workout');
+      toast('Exercise recognition is a preliminary posture hint, not Dimitri’s LSTM. Select an exercise for counting.');
+    },
+    saveProgram:async(summary)=>{
+      // Preserve the V2 multi-exercise summary locally until the optional
+      // Supabase extension migration has been installed. Per-exercise results
+      // continue to save to the existing RLS-protected workouts table.
+      const key='motionlab_program_sessions_'+(me?.id||'guest');
+      let rows=[];try{rows=JSON.parse(localStorage.getItem(key)||'[]');}catch{}
+      rows.push({...summary,savedAt:new Date().toISOString()});
+      localStorage.setItem(key,JSON.stringify(rows.slice(-50)));
+    }
+  });
+  advanced.render();
   wireEvents();
   showView('home');
   if(!configured){
