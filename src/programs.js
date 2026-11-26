@@ -1,12 +1,9 @@
-// Port of Dimitri's V2 preset config + V2 MotionStats/adaptive rules.
+// Three-exercise workout programs and adaptive session helpers.
 // Explicitly experimental form and movement proxies; not clinical advice.
 export const EXERCISES = Object.freeze({
   squat: {label:'Squats', unit:'reps', target:10, view:'Side or front'},
   pushup: {label:'Push-ups', unit:'reps', target:5, view:'Side'},
-  plank: {label:'Forearm plank', unit:'seconds', target:20, view:'Side'},
-  lunge: {label:'Stationary lunges', unit:'reps', target:10, view:'Side'},
-  curl: {label:'Bicep curls', unit:'reps', target:10, view:'Side'},
-  jack: {label:'Jumping jacks', unit:'reps', target:15, view:'Front'}
+  plank: {label:'Forearm plank', unit:'seconds', target:20, view:'Side'}
 });
 export const PRESETS = Object.freeze([
   {name:'Beginner',description:'Build a strong foundation',rest:30,exercises:[{name:'squat',target:10},{name:'pushup',target:5},{name:'plank',target:20}]},
