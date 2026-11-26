@@ -18,6 +18,8 @@ let authMode = 'login';
 // Guest mode allows a webcam demo without an account; workouts are never saved.
 let guestMode = false;
 let active = false;
+let paused = false;
+let pausedAt = 0;
 let stream = null;
 let landmarker = null;
 let requestId = 0;
@@ -219,7 +221,7 @@ async function startWorkout() {
     }
     startedAt=performance.now()/1000;
     lastFrame=-1;lastInference=0;
-    active=true;
+    active=true;paused=false;
     $('camera-placeholder').classList.add('hidden');
     document.querySelector('.record-dot').classList.add('live');
     $('camera-status').textContent='LIVE SESSION';
@@ -237,6 +239,7 @@ async function startWorkout() {
 }
 function tick(timestamp) {
   if(!active)return;
+  if(paused){requestId=requestAnimationFrame(tick);return;}
   const video=$('webcam');
   const canvas=$('pose-canvas');
   if(video.readyState >= 2 && timestamp-lastInference>95 && video.currentTime!==lastFrame){
@@ -289,9 +292,18 @@ function setLiveData(){
   if(status)status.textContent=recognitionHint;
 }
 function formatTime(seconds){const n=Math.max(0,Math.floor(seconds));return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;}
+function togglePause(){
+  if(!active)return toast('Start the camera before pausing.',true);
+  if(!paused){paused=true;pausedAt=performance.now();$('camera-status').textContent='PAUSED';}
+  else{
+    paused=false;startedAt+=(performance.now()-pausedAt)/1000;
+    if(counter)counter.lastTime=null;
+    $('camera-status').textContent='LIVE SESSION';
+  }
+}
 function stopCamera(){
   advanced?.onStop();
-  active=false;
+  active=false;paused=false;
   cancelAnimationFrame(requestId);
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
   $('webcam').srcObject=null;
@@ -377,7 +389,7 @@ function wireEvents(){
 }
 async function init(){
   advanced=createAdvancedUI({
-    showView,selectExercise,
+    showView,selectExercise,togglePause,
     getExercise:()=>exercise,
     getUser:()=>me,
     isActive:()=>active,
