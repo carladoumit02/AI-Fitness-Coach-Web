@@ -9,7 +9,7 @@ export function createAdvancedUI(hooks){
   const state={plan:null,index:0,results:[],startedAt:0,restHandle:null,restUntil:0,history:[],
     poses:[],attempts:[],previousPose:null,previousAngle:null,attemptStart:null,lastFrameTime:0,
     settings:{voice:false,adaptive:false,calibrate:false},selectedBuilder:[],calibration:[],
-    bestDisplay:'',active:false,comparison:false,latestPoints:null,coachLast:'',lastVoice:0};
+    bestDisplay:'',active:false,comparison:false,latestPoints:null,coachLast:'',lastVoice:0,lastSummary:null};
   const store=()=>{
     const user=hooks.getUser?.();return 'motionlab_v3_'+(user?.id||'guest');
   };
@@ -68,7 +68,8 @@ export function createAdvancedUI(hooks){
         plan=adapted.plan;
         hooks.toast?.(adapted.note);
       }
-      state.plan=plan;state.index=0;state.results=[];state.startedAt=Date.now();
+      state.plan=plan;state.index=0;state.results=[];state.startedAt=Date.now();state.lastSummary=null;
+      byId('advanced-program-results').classList.add('hidden');
       state.poses=[];state.attempts=[];state.previousPose=null;state.previousAngle=null;
       stopRest();setStep();
       hooks.showView('workout');
@@ -90,7 +91,8 @@ export function createAdvancedUI(hooks){
     byId('advanced-program-live').innerHTML=
       '<div class="eyebrow">PROGRAM SESSION</div><strong>'+esc(state.plan.name)+'</strong>'+
       '<p>Exercise '+(state.index+1)+' of '+state.plan.exercises.length+': '+esc(label(step.name))+
-      ' · '+step.target+' '+unit+'</p><small>Start camera when positioned. This is the current set.</small>';
+      ' · '+step.target+' '+unit+'</p><small>Check your posture, then start the camera. Counting begins after a 3-second countdown; the target ends this set automatically.</small>'; 
+    byId('advanced-end-program')?.classList.remove('hidden');
     state.calibration=[];
     speak('Next exercise: '+label(step.name),true);
   }
@@ -128,27 +130,37 @@ export function createAdvancedUI(hooks){
     state.restHandle=setInterval(renderRest,1000);renderRest();
     speak('Time to rest',true);
   }
-  function onCompleted(row){
-    if(!state.plan)return false;
+  function onCompleted(row,{endedEarly=false}={}){
+    if(!state.plan)return {inProgram:false,finished:!endedEarly,endedEarly};
     const step=state.plan.exercises[state.index];
     const result={...row,exercise:step.name,target:step.target,
       grade:grade(row.score),attempts:state.attempts.slice(),motion:motionSummary(state.attempts)};
     state.results.push(result);
     state.index+=1;
-    if(state.index<state.plan.exercises.length)startRest();
-    else{
-      const summary=summarizePlan(state.plan,state.results,(Date.now()-state.startedAt)/1000);
-      renderProgramSummary(summary);
-      void hooks.saveProgram?.(summary).catch(e=>hooks.toast?.('Program history could not be saved: '+e.message,true));
-      state.plan=null;byId('advanced-program-live').classList.add('hidden');
-      speak('Workout complete. Review your results.',true);
+    if(!endedEarly && state.index<state.plan.exercises.length){
+      startRest();
+      return {inProgram:true,finished:false,endedEarly:false,exercise:step.name};
     }
-    return true;
+    const summary=summarizePlan(state.plan,state.results,(Date.now()-state.startedAt)/1000);
+    summary.completed=!endedEarly && state.index===state.plan.exercises.length;
+    state.lastSummary=summary;
+    renderProgramSummary(summary);
+    if(hooks.getUser()){
+      void Promise.resolve(hooks.saveProgram?.(summary))
+        .catch(e=>hooks.toast?.('Program history could not be saved: '+e.message,true));
+    }
+    stopRest();
+    state.plan=null;
+    byId('advanced-program-live').classList.add('hidden');
+    byId('advanced-rest').classList.add('hidden');
+    byId('advanced-end-program')?.classList.add('hidden');
+    speak(summary.completed?'Workout complete. Review your results.':'Workout ended early. Review your results.',true);
+    return {inProgram:true,finished:true,endedEarly,summary};
   }
   function renderProgramSummary(summary){
     const root=byId('advanced-program-results');
     root.classList.remove('hidden');
-    root.innerHTML='<div class="section-title"><div><div class="eyebrow">PROGRAM COMPLETE</div><h2>'+esc(summary.program)+'</h2></div></div>'+
+    root.innerHTML='<div class="section-title"><div><div class="eyebrow">'+(summary.completed?'PROGRAM COMPLETE!':'WORKOUT ENDED EARLY')+'</div><h2>'+esc(summary.program)+'</h2></div></div>'+
      '<div class="metrics-grid"><div class="stat-card"><span>OVERALL RATING</span><strong>'+summary.score+'/100 · '+grade(summary.score)+'</strong></div>'+
      '<div class="stat-card"><span>FORM QUALITY</span><strong>'+summary.quality+'%</strong></div>'+
      '<div class="stat-card"><span>COMPLETION</span><strong>'+summary.completion+'%</strong></div></div>'+
@@ -211,12 +223,27 @@ export function createAdvancedUI(hooks){
     if('speechSynthesis' in window)window.speechSynthesis.cancel();
   }
   function cancelPlan(){
-    if(!state.plan)return;stopRest();state.plan=null;
+    if(!state.plan)return;
+    if(!window.confirm('End this guided workout early? Completed exercises will remain in your results.'))return;
+    if(hooks.isActive())return hooks.finishEarly?.();
+    // End even while the rest timer is running; do not count an unstarted next set.
+    const summary=summarizePlan(state.plan,state.results,(Date.now()-state.startedAt)/1000);
+    summary.completed=false;
+    state.lastSummary=summary;
+    renderProgramSummary(summary);
+    if(hooks.getUser()){
+      void Promise.resolve(hooks.saveProgram?.(summary))
+        .catch(e=>hooks.toast?.('Program history could not be saved: '+e.message,true));
+    }
+    stopRest();state.plan=null;
     byId('workout-start').disabled=false;
     byId('exercise-select').disabled=false;
     byId('target-input').disabled=false;
     byId('advanced-program-live').classList.add('hidden');
     byId('advanced-rest').classList.add('hidden');
+    byId('advanced-end-program')?.classList.add('hidden');
+    hooks.toast?.('Workout ended early. See your partial summary on the dashboard.');
+    hooks.showView('home');
   }
   function cancelRest(){stopRest();}
   function builder(){
@@ -387,7 +414,7 @@ export function createAdvancedUI(hooks){
     byId('advanced-compare').onclick=comparison;
     byId('advanced-replay').onclick=replay;
     byId('advanced-analytics-live').onclick=()=>{hooks.showView('home');analytics();};
-    byId('advanced-end-program').onclick=()=>{cancelPlan();hooks.toast?.('Program ended.');};
+    byId('advanced-end-program').onclick=cancelPlan;
     loadPrefs();
   }
   return {render,startPlan,onCompleted,onFrame,onRep,onStop,cancelPlan,cancelRest,loadPrefs,syncAccount,
