@@ -76,6 +76,11 @@ export function createAdvancedUI(hooks){
   }
   function setStep(){
     if(!state.plan)return;
+    // Per-exercise motion analytics should not carry attempts from the prior set.
+    if(state.index>0){
+      state.attempts=[];state.poses=[];state.attemptStart=null;
+      state.previousAngle=null;state.lastFrameTime=0;
+    }
     const step=state.plan.exercises[state.index];
     hooks.selectExercise(step.name);
     byId('target-input').value=step.target;
