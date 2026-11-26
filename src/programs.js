@@ -57,7 +57,7 @@ export function summarizePlan(plan,exercises,duration){
 }
 export function motionSummary(attempts){
   const rows=attempts.filter(x=>x.complete);
-  const avg=(key)=>rows.length?Math.round(rows.reduce((s,x)=>s+(Number(x[key])||0),0)/rows.length*10)/10:null;
+  const avg=(key)=>rows.length?Math.round((rows.reduce((s,x)=>s+(Number(x[key])||0),0)/rows.length+1e-9)*10)/10:null;
   const result={avg_tempo:avg('seconds'),avg_range:avg('range'),performance_change:null};
   if(rows.length>=6){
     const first=rows.slice(0,3),last=rows.slice(-3);
