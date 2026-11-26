@@ -46,7 +46,7 @@ export function createAdvancedUI(hooks){
     }
   }
   function savePrefs(){
-    for(const key of Object.keys(state.settings))state.settings[key]=Boolean(byId('advanced-'+key)?.checked);
+    for(const key of Object.keys(state.settings))if(key!=='voice')state.settings[key]=Boolean(byId('advanced-'+key)?.checked);
     localStorage.setItem(store()+'_preferences',JSON.stringify(state.settings));
     if(hooks.getUser())void hooks.saveSettings?.(state.settings).catch(e=>console.info('Settings stored locally:',e.message));
     hooks.toast?.(hooks.getUser()?'Preferences saved (cloud sync if configured).':'Guest preferences saved in this browser.');
@@ -179,6 +179,8 @@ export function createAdvancedUI(hooks){
     const now=Date.now();
     if(!important && (text===state.coachLast||now-state.lastVoice<4500))return;
     state.coachLast=text;state.lastVoice=now;
+    // Spoken cues are managed by the workout studio to avoid duplicate audio.
+    if(hooks.voiceManagedSeparately?.())return;
     if(important)window.speechSynthesis.cancel();
     const utterance=new SpeechSynthesisUtterance(text);utterance.rate=1.03;utterance.volume=.75;
     window.speechSynthesis.speak(utterance);
@@ -255,6 +257,7 @@ export function createAdvancedUI(hooks){
   function builder(){
     const root=byId('advanced-builder');
     root.classList.remove('hidden');
+    hooks.showView('home');
     const custom=getCustom();
     state.selectedBuilder=clonePlan(custom?.exercises||[{name:'squat',target:10},{name:'pushup',target:5},{name:'plank',target:20}]);
     function draw(){
@@ -362,7 +365,7 @@ export function createAdvancedUI(hooks){
       '<div class="advanced-actions"><button id="advanced-open-builder" class="secondary-btn" type="button">Create custom workout</button> '+
       '<button id="advanced-open-analytics" class="secondary-btn" type="button">Progress insights</button></div>'+
       '<div class="panel card-surface advanced-settings"><strong>Coaching preferences</strong>'+
-      '<label><input id="advanced-voice" type="checkbox"> Voice guidance</label>'+
+
       '<label><input id="advanced-adaptive" type="checkbox"> Adaptive targets / rest</label>'+
       '<label><input id="advanced-calibrate" type="checkbox"> Starting-angle calibration</label>'+
       '<button id="advanced-save-settings" type="button" class="secondary-btn">Save preferences</button>'+
@@ -409,6 +412,6 @@ export function createAdvancedUI(hooks){
     byId('advanced-end-program').onclick=cancelPlan;
     loadPrefs();
   }
-  return {render,startPlan,onCompleted,onFrame,onRep,onStop,cancelPlan,cancelRest,loadPrefs,syncAccount,
+  return {render,startPlan,openBuilder:builder,onCompleted,onFrame,onRep,onStop,cancelPlan,cancelRest,loadPrefs,syncAccount,
     setHistory,analytics,replay,comparison,getState:()=>state};
 }
