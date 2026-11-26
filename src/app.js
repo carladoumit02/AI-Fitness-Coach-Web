@@ -502,10 +502,41 @@ async function finishWorkout({automatic=false}={}){
       data.slice(0,3).map((row,i)=>`${i+1}. ${escapeHtml(row.display_name)} — ${row.best_score}/100`).join('<div></div>')+'</div>';
   }
 }
+function openWorkoutChoice(){
+  if(active)return toast('Finish the current workout before choosing a new one.',true);
+  $('choice-menu').classList.remove('hidden');
+  $('choice-programs').classList.add('hidden');
+  $('choice-voice').checked=distanceCoach?.enabled()??false;
+  const dialog=$('workout-choice');
+  if(!dialog.open)dialog.showModal();
+}
+function closeWorkoutChoice(){
+  const dialog=$('workout-choice');
+  if(dialog.open)dialog.close();
+}
 function wireEvents(){
   document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
   document.querySelectorAll('.exercise-card').forEach(btn=>btn.addEventListener('click',()=>selectExercise(btn.dataset.exercise)));
-  $('hero-start').addEventListener('click',()=>showView('workout'));
+  $('hero-start').addEventListener('click',openWorkoutChoice);
+  $('choice-close').addEventListener('click',closeWorkoutChoice);
+  $('choice-guided').addEventListener('click',()=>{
+    $('choice-menu').classList.add('hidden');
+    $('choice-programs').classList.remove('hidden');
+  });
+  $('choice-back').addEventListener('click',()=>{
+    $('choice-programs').classList.add('hidden');
+    $('choice-menu').classList.remove('hidden');
+  });
+  $('choice-custom').addEventListener('click',()=>{
+    closeWorkoutChoice();
+    advanced?.openBuilder();
+  });
+  document.querySelectorAll('[data-choice-preset]').forEach(btn=>btn.addEventListener('click',()=>{
+    const idx=Number(btn.dataset.choicePreset);
+    closeWorkoutChoice();
+    advanced?.startPreset(idx);
+  }));
+  $('choice-voice').addEventListener('change',e=>distanceCoach?.setEnabled(e.target.checked));
   $('exercise-select').addEventListener('change',e=>selectExercise(e.target.value));
   $('workout-start').addEventListener('click',startWorkout);
   $('workout-stop').addEventListener('click',()=>void finishWorkout({automatic:false}));
@@ -555,7 +586,7 @@ function wireEvents(){
 async function init(){
   distanceCoach=createRemoteCoach({getExercise:()=>exercise});
   advanced=createAdvancedUI({
-    showView,selectExercise,togglePause,finishEarly:()=>void finishWorkout({automatic:false}),
+    showView,selectExercise,togglePause,voiceManagedSeparately:()=>true,finishEarly:()=>void finishWorkout({automatic:false}),
     getExercise:()=>exercise,
     getUser:()=>me,
     isActive:()=>active,
