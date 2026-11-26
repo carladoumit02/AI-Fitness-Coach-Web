@@ -42,3 +42,36 @@
 #auth-resend{margin-top:8px;text-align:left}
 .auth-overlay .auth-panel{max-height:95dvh;overflow:auto}
 .workout-actions .secondary-btn{font-weight:700}
+
+
+/* Distance-first workout interface: readable from across the room. */
+.camera-stage{min-height:420px}
+.distance-coach{position:absolute;z-index:5;left:3%;right:3%;bottom:4%;padding:17px 22px;
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;
+  background:rgba(4,12,14,.88);color:#f7fff6;text-align:center;border:2px solid #c6f36b;
+  border-radius:18px;box-shadow:0 9px 28px #0008;pointer-events:none}
+.distance-coach[data-kind="far"],.distance-coach[data-kind="missing"],.distance-coach[data-kind="adjust"]{
+ border-color:#ffc968;background:rgba(49,26,7,.92)}
+.distance-coach[data-kind="countdown"]{background:rgba(14,43,32,.94);border-color:#c6f36b}
+.distance-coach-tag{font-weight:800;letter-spacing:2px;font-size:11px;color:#d0dfc8}
+#distance-coach-title{font-family:Outfit,system-ui,sans-serif;font-size:clamp(27px,4vw,57px);
+ font-weight:900;letter-spacing:.02em;line-height:1.06}
+#distance-coach-detail{font-size:clamp(13px,1.9vw,22px);font-weight:700;color:#f4f9f2;line-height:1.25}
+.distance-coach-controls{display:flex;align-items:center;flex-wrap:wrap;gap:15px;
+ padding:15px 20px;border-top:1px solid #33454b}
+.distance-coach-toggle{display:inline-flex;align-items:center;gap:9px;font-weight:700;font-size:13px;
+ color:#eef7ec;cursor:pointer}
+.distance-coach-toggle input{width:21px;height:21px;margin:0;accent-color:#c6f36b}
+.distance-coach-help{color:#99b5ae;font-size:11px;line-height:1.5;flex:1 1 100%}
+.camera-card:fullscreen{display:flex;flex-direction:column;background:#090f13;border:0;border-radius:0;padding:12px}
+.camera-card:fullscreen .camera-stage{flex:1;min-height:0}
+.camera-card:fullscreen .distance-coach{bottom:4%;padding:22px 30px}
+.camera-card:fullscreen #distance-coach-title{font-size:clamp(38px,7vw,92px)}
+.camera-card:fullscreen #distance-coach-detail{font-size:clamp(19px,3vw,35px)}
+@media(max-width:600px){
+ .distance-coach{padding:12px;gap:4px;border-radius:11px}
+ #distance-coach-title{font-size:25px}
+ #distance-coach-detail{font-size:12px}
+ .distance-coach-controls{padding:12px}
+ .camera-stage{min-height:290px}
+}
