@@ -143,8 +143,17 @@ async function loadHistory() {
   root.innerHTML='<div class="empty-state">Loading your sessions…</div>';
   const {data,error}=await api.from('workouts').select('id,exercise,reps,valid_seconds,rating,form_quality,completion,created_at').eq('user_id',me.id).order('created_at',{ascending:false}).limit(100);
   if (error) {root.innerHTML=`<div class="empty-state">${escapeHtml(error.message)}</div>`;return;}
-  if (!data.length) {root.innerHTML='<div class="empty-state">No workouts yet. Start one in the studio to see your progress here.</div>';return;}
-  root.innerHTML=data.map(row=>`<div class="history-row"><div><strong>${escapeHtml(niceExercise[row.exercise]||row.exercise)}</strong><small>${new Date(row.created_at).toLocaleString()} · ${row.exercise==='plank'?`${Number(row.valid_seconds).toFixed(1)} sec`:`${row.reps} reps`} · Form ${row.form_quality}%</small></div><div><span class="rank-score">${row.rating}</span><span class="grade-pill">${grade(row.rating)}</span></div></div>`).join('');
+  // The extension migration stores full multi-exercise program sessions.
+  // If it has not been installed yet, preserve the original workout history.
+  const extra=await api.from('program_sessions')
+    .select('id,program_name,rating,form_quality,completion,duration_seconds,created_at')
+    .eq('user_id',me.id).order('created_at',{ascending:false}).limit(100);
+  const items=[
+    ...data.map(row=>({...row,kind:'exercise'})),
+    ...(extra.error?[]:extra.data.map(row=>({...row,kind:'program'})))
+  ].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,100);
+  if (!items.length){root.innerHTML='<div class="empty-state">No workouts yet. Start one in the studio to see your progress here.</div>';return;}
+  root.innerHTML=items.map(row=>`<div class="history-row"><div><strong>${escapeHtml(row.kind==='program'?row.program_name:niceExercise[row.exercise]||row.exercise)}</strong><small>${new Date(row.created_at).toLocaleString()} · ${row.kind==='program'?`Full program · ${row.duration_seconds}s · ${row.completion}% completion`:row.exercise==='plank'?`${Number(row.valid_seconds).toFixed(1)} sec`:`${row.reps} reps`} · Form ${row.form_quality}%</small></div><div><span class="rank-score">${row.rating}</span><span class="grade-pill">${grade(row.rating)}</span></div></div>`).join('');
 }
 async function loadLeaderboard() {
   const root=$('leaderboard-list');
