@@ -5,6 +5,7 @@ import { EXERCISES } from './programs.js';
 import { createAdvancedUI } from './advanced-ui.js';
 import { extraMetrics, updateExtraCounter, recognizeExercise } from './extra-exercises.js';
 import { shouldAutoFinish, workoutCompletionLabel, setCompletionLabel } from './session-flow.js';
+import {createRemoteCoach} from './remote-coach-ui.js';
 
 const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const siteRedirect = new URL(import.meta.env.BASE_URL, window.location.origin).href;
@@ -43,6 +44,7 @@ let readySince=null;
 let countdownUntil=0;
 let finishingWorkout=false;
 let lastExport=null;
+let distanceCoach=null;
 
 function toast(message, error = false) {
   const el = $('notice');
@@ -252,6 +254,7 @@ async function startWorkout() {
   if(!(target>=1&&target<=300)){toast('Choose a target between 1 and 300.',true);return;}
   exercise=$('exercise-select').value;
   $('workout-start').disabled=true;
+  distanceCoach?.markStarted(exercise);
   $('camera-status').textContent='STARTING…';
   try {
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false});
@@ -331,6 +334,11 @@ function tick(timestamp) {
           }
         }
         if(sessionPhase!=='active'){
+          const frame=distanceCoach?.assessFrame(points,exercise);
+          distanceCoach?.update({
+            exercise,phase:sessionPhase,frame,
+            ready,seconds:(countdownUntil-timestamp)/1000
+          });
           $('camera-status').textContent=sessionPhase==='countdown'?'GET READY':'FIND START POSITION';
           $('coach-feedback').textContent=sessionPhase==='countdown'?
             ('Starting in '+Math.max(1,Math.ceil((countdownUntil-timestamp)/1000))+'…'):
@@ -361,6 +369,9 @@ function tick(timestamp) {
       else updateCounter(counter,m,timestamp/1000);
       advanced?.onFrame(points,m,counter,timestamp/1000);
       advanced?.onRep(oldReps,counter.reps,counter,timestamp/1000);
+      const frame=distanceCoach?.assessFrame(points,exercise);
+      distanceCoach?.update({exercise,phase:'active',frame,feedback:counter.feedback});
+      distanceCoach?.onCount(counter,target);
       const hint=recognizeExercise(points);
       recognitionHint=hint.exercise==='idle'?'Movement not identified':('Possible '+(niceExercise[hint.exercise]||hint.exercise));
       if(shouldAutoFinish(counter,target,sessionPhase,finishingWorkout)){
@@ -405,6 +416,7 @@ function togglePause(){
 }
 function stopCamera(){
   advanced?.onStop();
+  distanceCoach?.stop();
   active=false;paused=false;sessionPhase='idle';readySince=null;
   if(recognitionMode){
     recognitionMode=false;recognizedExercise=null;recognitionStreak=0;
@@ -454,6 +466,7 @@ async function finishWorkout({automatic=false}={}){
     {...detail,endedEarly,exportedAt:new Date().toISOString(),educationalPrototype:true};
   if(outcome.inProgram && !outcome.finished){
     // Completing a guided-program set automatically starts the rest timer.
+    distanceCoach?.announce('Exercise complete. Take your rest.');
     // Do not interrupt that rest with a blocking dialog.
     toast(setCompletionLabel({completed:true,program:true}));
   }else{
@@ -540,6 +553,7 @@ function wireEvents(){
   window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
 }
 async function init(){
+  distanceCoach=createRemoteCoach({getExercise:()=>exercise});
   advanced=createAdvancedUI({
     showView,selectExercise,togglePause,finishEarly:()=>void finishWorkout({automatic:false}),
     getExercise:()=>exercise,
