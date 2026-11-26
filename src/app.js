@@ -78,6 +78,7 @@ async function refreshUser() {
   updateIdentity();
   advanced?.loadPrefs();
   await loadOverview();
+  if(me)void advanced?.syncAccount();
 }
 function switchAuth() {
   authMode = authMode === 'login' ? 'register' : 'login';
@@ -385,14 +386,47 @@ async function init(){
       showView('workout');
       toast('Exercise recognition is a preliminary posture hint, not Dimitri’s LSTM. Select an exercise for counting.');
     },
+    loadSettings:async()=>{
+      if(!me)return null;
+      const {data,error}=await api.from('user_preferences').select('voice,adaptive,calibrate').eq('user_id',me.id).maybeSingle();
+      if(error)throw error;return data;
+    },
+    saveSettings:async(settings)=>{
+      if(!me)return;
+      const {error}=await api.from('user_preferences').upsert({
+        user_id:me.id,voice:settings.voice,adaptive:settings.adaptive,calibrate:settings.calibrate
+      },{onConflict:'user_id'});
+      if(error)throw error;
+    },
+    loadCustom:async()=>{
+      if(!me)return null;
+      const {data,error}=await api.from('user_programs').select('program').eq('user_id',me.id).maybeSingle();
+      if(error)throw error;return data;
+    },
+    saveCustom:async(program)=>{
+      if(!me)return;
+      const {error}=await api.from('user_programs').upsert({user_id:me.id,program},{onConflict:'user_id'});
+      if(error)throw error;
+    },
+    loadProgramHistory:async()=>{
+      if(!me)return [];
+      const {data,error}=await api.from('program_sessions')
+        .select('program_name,form_quality,completion,rating,created_at').eq('user_id',me.id)
+        .order('created_at',{ascending:false}).limit(30);
+      if(error)throw error;return [...data].reverse();
+    },
     saveProgram:async(summary)=>{
-      // Preserve the V2 multi-exercise summary locally until the optional
-      // Supabase extension migration has been installed. Per-exercise results
-      // continue to save to the existing RLS-protected workouts table.
-      const key='motionlab_program_sessions_'+(me?.id||'guest');
-      let rows=[];try{rows=JSON.parse(localStorage.getItem(key)||'[]');}catch{}
-      rows.push({...summary,savedAt:new Date().toISOString()});
-      localStorage.setItem(key,JSON.stringify(rows.slice(-50)));
+      if(!me)return; // Guest session summaries are transient and not stored.
+      const {error}=await api.from('program_sessions').insert({
+        user_id:me.id,program_name:summary.program,rating:summary.score,
+        form_quality:summary.quality,completion:summary.completion,
+        duration_seconds:summary.duration,
+        exercise_results:summary.exercises.map(x=>({
+          exercise:x.exercise,target:x.target,reps:x.reps,valid_seconds:x.valid_seconds,
+          quality:x.form_quality,completion:x.completion,score:x.score
+        }))
+      });
+      if(error)throw error;
     }
   });
   advanced.render();
