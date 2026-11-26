@@ -172,7 +172,10 @@ function selectExercise(next) {
 }
 async function makeLandmarker() {
   const { PoseLandmarker, FilesetResolver, DrawingUtils } = poseModule ||= await import('@mediapipe/tasks-vision');
-  const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm');
+  // Serve the MediaPipe WASM runtime from our own GitHub Pages site, so it
+  // always matches the JS version installed during the Vite build.
+  const wasmBase = new URL(`${import.meta.env.BASE_URL}wasm`, window.location.origin).href;
+  const vision=await FilesetResolver.forVisionTasks(wasmBase);
   const variant=exercise==='plank'?'full':'lite';
   const modelAssetPath=`https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${variant}/float16/1/pose_landmarker_${variant}.task`;
   landmarker=await PoseLandmarker.createFromOptions(vision,{
@@ -195,6 +198,10 @@ async function startWorkout() {
     const video=$('webcam');
     video.srcObject=stream;
     await video.play();
+    // Show the live webcam before loading the pose model so users can tell that
+    // camera access succeeded. A pose model error must not masquerade as a permission error.
+    $('camera-placeholder').classList.add('hidden');
+    $('camera-status').textContent='LOADING POSE TRACKING…';
     renderer=await makeLandmarker();
     counter=makeCounter(exercise);
     startedAt=performance.now()/1000;
@@ -209,8 +216,10 @@ async function startWorkout() {
     setLiveData();
     requestId=requestAnimationFrame(tick);
   }catch(e){
+    console.error('Workout initialization failed:', e);
+    const detail = e instanceof Error ? e.message : String(e ?? 'Unknown error');
     stopCamera();
-    toast(`Could not start the camera: ${e.message}. Check camera permission and internet access for the pose model.`,true);
+    toast(`Unable to start workout: ${detail}. Camera access may be allowed, but pose-tracking resources could not load.`,true);
   }
 }
 function tick(timestamp) {
