@@ -15,7 +15,7 @@ export function createRemoteCoach({getExercise=()=> 'squat'}={}){
   const panel=document.createElement('div');
   panel.className='distance-coach-controls';
   panel.innerHTML='<label class="distance-coach-toggle"><input id="distance-coach-voice" type="checkbox"> <span>🔊 Spoken workout instructions</span></label>'+
-    '<button id="distance-coach-fullscreen" class="secondary-btn" type="button">⛶ Large workout view</button>'+
+    '<button id="distance-coach-fullscreen" class="secondary-btn" type="button" aria-label="Maximize workout view">⤢ Maximize</button>'+
     '<span class="distance-coach-help">Voice works best when your device is not muted. Start the camera to hear coaching.</span>';
   stage.closest('.camera-card')?.appendChild(panel);
 
@@ -40,12 +40,25 @@ export function createRemoteCoach({getExercise=()=> 'squat'}={}){
     setEnabled(voiceToggle.checked);
     if(enabled)speak('Spoken instructions are on.',true);
   };
+  const fullscreenRoot=stage.closest('.camera-card');
+  function syncFullscreenButton(){
+    const expanded=document.fullscreenElement===fullscreenRoot;
+    fullscreen.textContent=expanded?'⤡ Minimize':'⤢ Maximize';
+    fullscreen.setAttribute('aria-label',expanded?'Minimize workout view':'Maximize workout view');
+    fullscreen.setAttribute('aria-pressed',String(expanded));
+    fullscreen.title=expanded?'Exit fullscreen (Esc)':'Enter fullscreen workout view';
+  }
   fullscreen.onclick=()=>{
-    const root=stage.closest('.camera-card');
-    if(!root)return;
-    if(document.fullscreenElement)document.exitFullscreen?.();
-    else if(root.requestFullscreen)root.requestFullscreen().catch(()=>{});
+    if(!fullscreenRoot)return;
+    if(document.fullscreenElement===fullscreenRoot){
+      void document.exitFullscreen?.().catch(()=>{});
+    }else if(!document.fullscreenElement && fullscreenRoot.requestFullscreen){
+      void fullscreenRoot.requestFullscreen().catch(()=>{});
+    }
   };
+  // Also update after pressing Escape or leaving fullscreen without clicking the button.
+  document.addEventListener('fullscreenchange',syncFullscreenButton);
+  syncFullscreenButton();
   function speak(text,urgent=false){
     if(!enabled||!started||!('speechSynthesis' in window)||!text)return;
     const now=Date.now();
