@@ -323,6 +323,7 @@ export function createAdvancedUI(hooks){
     const info=document.createElement('div');info.id='advanced-program-live';info.className='panel card-surface hidden';live.insertBefore(info,live.querySelector('.workout-grid'));
     const rest=document.createElement('div');rest.id='advanced-rest';rest.className='panel card-surface hidden';live.insertBefore(rest,live.querySelector('.workout-grid'));
     const extras=document.createElement('div');extras.className='advanced-actions';extras.innerHTML=
+      '<button type="button" id="advanced-pause" class="secondary-btn">Pause / Resume</button> '+
       '<button type="button" id="advanced-compare" class="secondary-btn">Compare form</button> '+
       '<button type="button" id="advanced-replay" class="secondary-btn">Replay landmarks</button> '+
       '<button type="button" id="advanced-analytics-live" class="secondary-btn">Analytics</button> '+
@@ -337,6 +338,7 @@ export function createAdvancedUI(hooks){
     byId('advanced-open-analytics').onclick=analytics;
     byId('advanced-open-recognition').onclick=()=>hooks.startRecognition?.();
     byId('advanced-save-settings').onclick=savePrefs;
+    byId('advanced-pause').onclick=()=>hooks.togglePause?.();
     byId('advanced-compare').onclick=comparison;
     byId('advanced-replay').onclick=replay;
     byId('advanced-analytics-live').onclick=()=>{hooks.showView('home');analytics();};
