@@ -324,6 +324,8 @@ export function createAdvancedUI(hooks){
     }
     for(const [code,ex] of Object.entries(EXERCISES).slice(3)){
       const select=byId('exercise-select');const option=document.createElement('option');option.value=code;option.textContent=ex.label;select.appendChild(option);
+      const filter=byId('rank-exercise');const filterOption=document.createElement('option');
+      filterOption.value=code;filterOption.textContent=ex.label;filter.appendChild(filterOption);
     }
     const builderRoot=document.createElement('section');builderRoot.id='advanced-builder';builderRoot.className='hidden';home.appendChild(builderRoot);
     const analyticsRoot=document.createElement('section');analyticsRoot.id='advanced-analytics';analyticsRoot.className='hidden';home.appendChild(analyticsRoot);
