@@ -322,6 +322,10 @@ function togglePause(){
 function stopCamera(){
   advanced?.onStop();
   active=false;paused=false;
+  if(recognitionMode){
+    recognitionMode=false;recognizedExercise=null;recognitionStreak=0;
+    $('advanced-auto-info')?.classList.add('hidden');
+  }
   cancelAnimationFrame(requestId);
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
   $('webcam').srcObject=null;
@@ -422,6 +426,11 @@ async function init(){
       $('advanced-choose-detected').disabled=true;
       toast('Experimental recognition: hold a squat, push-up, or plank pose. Confirm the suggestion manually.');
       void startWorkout();
+    },
+    cancelRecognition:()=>{
+      if(!recognitionMode)return;
+      stopCamera();
+      toast('Recognition cancelled. Select any exercise to begin.');
     },
     useRecognition:()=>{
       if(!recognizedExercise||recognitionStreak<6)return;
