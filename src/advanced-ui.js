@@ -412,6 +412,6 @@ export function createAdvancedUI(hooks){
     byId('advanced-end-program').onclick=cancelPlan;
     loadPrefs();
   }
-  return {render,startPlan,openBuilder:builder,onCompleted,onFrame,onRep,onStop,cancelPlan,cancelRest,loadPrefs,syncAccount,
+  return {render,startPlan,startPreset:(index)=>{if(PRESETS[index])startPlan(PRESETS[index]);},openBuilder:builder,onCompleted,onFrame,onRep,onStop,cancelPlan,cancelRest,loadPrefs,syncAccount,
     setHistory,analytics,replay,comparison,getState:()=>state};
 }
