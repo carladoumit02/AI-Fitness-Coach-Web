@@ -329,6 +329,14 @@ export function createAdvancedUI(hooks){
       '<button type="button" id="advanced-analytics-live" class="secondary-btn">Analytics</button> '+
       '<button type="button" id="advanced-end-program" class="secondary-btn hidden">Exit program</button>';
     live.appendChild(extras);
+    const autoInfo=document.createElement('div');autoInfo.id='advanced-auto-info';
+    autoInfo.className='panel card-surface hidden';
+    autoInfo.innerHTML='<div class="eyebrow">EXPERIMENTAL EXERCISE RECOGNITION</div>'+
+      '<p id="advanced-recognition-status">Collecting pose…</p>'+
+      '<button id="advanced-choose-detected" type="button" class="secondary-btn" disabled>Use suggested exercise</button>'+
+      '<p class="disclaimer">This is a geometric posture hint, not Dimitri’s sequence LSTM. Confirm manually.</p>';
+    live.insertBefore(autoInfo,live.querySelector('.workout-grid'));
+    byId('advanced-choose-detected').onclick=()=>hooks.useRecognition?.();
     const compare=document.createElement('div');compare.id='advanced-comparison';compare.className='panel card-surface hidden';
     compare.innerHTML='<strong>REFERENCE SKELETON — schematic only</strong><canvas id="advanced-reference" width="340" height="210"></canvas>';
     live.appendChild(compare);
