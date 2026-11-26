@@ -4,6 +4,7 @@ import { clamp, rating, grade, completionPercent, makeCounter, updateCounter, ob
 import { EXERCISES } from './programs.js';
 import { createAdvancedUI } from './advanced-ui.js';
 import { extraMetrics, updateExtraCounter, recognizeExercise } from './extra-exercises.js';
+import { shouldAutoFinish, workoutCompletionLabel, setCompletionLabel } from './session-flow.js';
 
 const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const api = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -39,6 +40,7 @@ let recognitionStreak=0;
 let sessionPhase='idle';
 let readySince=null;
 let countdownUntil=0;
+let finishingWorkout=false;
 
 function toast(message, error = false) {
   const el = $('notice');
@@ -236,7 +238,7 @@ async function startWorkout() {
     }
     startedAt=performance.now()/1000;
     lastFrame=-1;lastInference=0;
-    active=true;paused=false;
+    active=true;paused=false;finishingWorkout=false;
     sessionPhase=recognitionMode?'active':'position';readySince=null;countdownUntil=0;
     $('camera-placeholder').classList.add('hidden');
     document.querySelector('.record-dot').classList.add('live');
@@ -329,9 +331,10 @@ function tick(timestamp) {
       advanced?.onRep(oldReps,counter.reps,counter,timestamp/1000);
       const hint=recognizeExercise(points);
       recognitionHint=hint.exercise==='idle'?'Movement not identified':('Possible '+(niceExercise[hint.exercise]||hint.exercise));
-      if(advanced?.getState().plan && observedCount(counter)>=target){
-        // Avoid completing the same set twice from successive video frames.
-        void finishWorkout();
+      if(shouldAutoFinish(counter,target,sessionPhase,finishingWorkout)){
+        // Works for individual workouts AND guided-program sets.
+        // Stop counting at the completed-rep/valid-hold target.
+        void finishWorkout({automatic:true});
         return;
       }
       $('pose-state').textContent=m?.confidence>=.45?'BODY TRACKED':'MOVE INTO FRAME';
@@ -389,9 +392,12 @@ function stopCamera(){
   $('camera-status').textContent='CAMERA OFF';
   $('pose-state').textContent='No pose yet';
 }
-async function finishWorkout(){
+async function finishWorkout({automatic=false}={}){
   if(recognitionMode){toast('Confirm the detected exercise before starting a workout.',true);return;}
-  if(!active || !counter)return;
+  if(!active || !counter || finishingWorkout)return;
+  finishingWorkout=true;
+  const reached=shouldAutoFinish(counter,target,sessionPhase,false);
+  const endedEarly=!automatic && !reached;
   const exerciseUsed=counter.exercise;
   const achieved=observedCount(counter);
   const quality=formQuality(counter);
@@ -408,19 +414,45 @@ async function finishWorkout(){
   const detail={exercise:exerciseUsed,reps:Math.round(counter.reps),valid_seconds:counter.validSeconds,
     target,form_quality:quality,completion,score,observed:counter.samples,
     goodSeconds:Math.round(counter.samples*quality/100)};
-  const inPlan=advanced?.onCompleted(detail);
-  $('summary-save-status').textContent=me?'Saving your session…':'Guest demo: this exercise was not saved.';
-  $('summary-dialog').showModal();
+  const outcome=advanced?.onCompleted(detail,{endedEarly})||{inProgram:false,finished:reached,endedEarly};
+  const full=outcome.summary;
+  const showResults=!outcome.inProgram||outcome.finished;
+  if(outcome.inProgram && !outcome.finished){
+    // Completing a guided-program set automatically starts the rest timer.
+    // Do not interrupt that rest with a blocking dialog.
+    toast(setCompletionLabel({completed:true,program:true}));
+  }else{
+    $('summary-heading').textContent=workoutCompletionLabel({program:Boolean(outcome.inProgram),endedEarly});
+    if(full){
+      $('summary-grade').textContent=grade(full.score);
+      $('summary-rating').textContent=full.score+' / 100';
+      $('summary-exercise').textContent=full.program;
+      $('summary-completed').textContent=full.exercises.length+' of '+(full.completed?full.exercises.length:(advanced?.getState()?.lastSummary?.exercises.length||full.exercises.length))+' sets recorded';
+      $('summary-quality').textContent=full.quality+'%';
+      $('summary-completion').textContent=full.completion+'%';
+      $('summary-leaders').innerHTML='<strong>EXERCISE GRADES</strong><div>'+
+        full.exercises.map(e=>escapeHtml(niceExercise[e.exercise]||e.exercise)+': '+e.score+'/100 ('+grade(e.score)+')').join('<div></div>')+'</div>';
+    }
+    $('summary-save-status').textContent=me?'Saving your results…':'Guest demo: results are not saved.';
+    $('summary-dialog').showModal();
+  }
   if(!me)return;
   const {error}=await api.from('workouts').insert({
     user_id:me.id,exercise:exerciseUsed,target,reps:exerciseUsed==='plank'?0:Math.round(achieved),
     valid_seconds:exerciseUsed==='plank'?achieved:0,form_quality:quality,completion,
   });
-  if(error){$('summary-save-status').textContent=`Could not save session: ${error.message}`;return;}
-  $('summary-save-status').textContent='✓ Session saved to your profile.';
+  if(error){
+    toast('Could not save exercise: '+error.message,true);
+    if(showResults)$('summary-save-status').textContent='Could not save: '+error.message;
+    return;
+  }
+  if(showResults)$('summary-save-status').textContent='✓ Results saved to your profile.';
   await loadOverview();
-  const {data}=await api.rpc('get_leaderboard',{p_exercise:exerciseUsed,p_period:'all'});
-  if(data?.length)$('summary-leaders').innerHTML='<strong>Top leaderboard entries:</strong><div>'+data.slice(0,3).map((row,i)=>`${i+1}. ${escapeHtml(row.display_name)} — ${row.best_score}/100`).join('<div></div>')+'</div>';
+  if(!outcome.inProgram){
+    const {data}=await api.rpc('get_leaderboard',{p_exercise:exerciseUsed,p_period:'all'});
+    if(data?.length)$('summary-leaders').innerHTML='<strong>Top leaderboard entries:</strong><div>'+
+      data.slice(0,3).map((row,i)=>`${i+1}. ${escapeHtml(row.display_name)} — ${row.best_score}/100`).join('<div></div>')+'</div>';
+  }
 }
 function wireEvents(){
   document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
@@ -428,7 +460,7 @@ function wireEvents(){
   $('hero-start').addEventListener('click',()=>showView('workout'));
   $('exercise-select').addEventListener('change',e=>selectExercise(e.target.value));
   $('workout-start').addEventListener('click',startWorkout);
-  $('workout-stop').addEventListener('click',finishWorkout);
+  $('workout-stop').addEventListener('click',()=>void finishWorkout({automatic:false}));
   $('rank-exercise').addEventListener('change',loadLeaderboard);
   $('rank-period').addEventListener('change',loadLeaderboard);
   $('auth-form').addEventListener('submit',submitAuth);
@@ -451,9 +483,9 @@ function wireEvents(){
   });
   $('summary-done').addEventListener('click',()=>{
     $('summary-dialog').close();
-    if(advanced?.getState().plan){
-      showView('workout');
-      $('camera-status').textContent='PREPARE NEXT EXERCISE';
+    showView('home');
+    if(advanced?.getState()?.lastSummary){
+      document.getElementById('advanced-program-results')?.scrollIntoView({block:'start',behavior:'smooth'});
     }
   });
   $('summary-close').addEventListener('click',()=>$('summary-dialog').close());
@@ -461,7 +493,7 @@ function wireEvents(){
 }
 async function init(){
   advanced=createAdvancedUI({
-    showView,selectExercise,togglePause,
+    showView,selectExercise,togglePause,finishEarly:()=>void finishWorkout({automatic:false}),
     getExercise:()=>exercise,
     getUser:()=>me,
     isActive:()=>active,
