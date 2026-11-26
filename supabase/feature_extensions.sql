@@ -1,11 +1,8 @@
 -- Run in Supabase SQL Editor AFTER initial supabase/schema.sql.
--- Dimitri original V2/V3 feature storage; safe additive schema migration.
+-- Guided program and account preference storage; safe additive schema migration.
 -- Requires the project owner to run manually. No usernames/passwords in git.
 
--- Original dashboard accepts 3 exercises; V2 contains 6.
-alter table public.workouts drop constraint if exists workouts_exercise_check;
-alter table public.workouts add constraint workouts_exercise_check
-  check (exercise in ('squat','pushup','plank','lunge','curl','jack'));
+-- Keep the original three-exercise workout constraint unchanged.
 
 create table if not exists public.user_programs (
   user_id uuid primary key references public.profiles(id) on delete cascade,
@@ -75,7 +72,7 @@ returns table(user_id uuid,display_name text,best_score integer,sessions_count b
 language plpgsql stable security definer set search_path = '' as $$
 begin
   if auth.uid() is null then raise exception 'Sign in required'; end if;
-  if p_exercise not in ('all','squat','pushup','plank','lunge','curl','jack')
+  if p_exercise not in ('all','squat','pushup','plank')
     or p_period not in ('all','week','today') then
     raise exception 'Invalid leaderboard filter';
   end if;
