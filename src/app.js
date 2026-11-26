@@ -12,6 +12,8 @@ let me = null;
 let profile = null;
 let currentView = 'home';
 let authMode = 'login';
+// Guest mode allows a webcam demo without an account; workouts are never saved.
+let guestMode = false;
 let active = false;
 let stream = null;
 let landmarker = null;
@@ -48,16 +50,20 @@ function updateIdentity() {
   $('account-name').textContent = name;
   $('account-type').textContent = me ? (profile?.role === 'admin' ? 'Administrator' : 'Member · Cloud synced') : 'Local preview · Not saved';
   $('avatar').textContent = name.slice(0,1).toUpperCase();
-  $('sign-out').classList.toggle('hidden', !me);
+  const accountButton = $('sign-out');
+  accountButton.classList.toggle('hidden', !configured || (!me && !guestMode));
+  accountButton.textContent = me ? 'Sign out ↗' : 'Sign in / Create account ↗';
+  $('top-auth').classList.toggle('hidden', !configured || Boolean(me) || !guestMode);
   document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', profile?.role !== 'admin'));
   if (currentView === 'admin' && profile?.role !== 'admin') showView('home');
-  $('auth-overlay').classList.toggle('hidden', !configured || Boolean(me));
+  $('auth-overlay').classList.toggle('hidden', !configured || Boolean(me) || guestMode);
 }
 async function refreshUser() {
   if (!api) return;
   const { data: {user}, error } = await api.auth.getUser();
   if (error && error.name !== 'AuthSessionMissingError') console.warn('Authentication refresh:', error.message);
   me = user || null;
+  if (me) guestMode = false;
   profile = null;
   if (me) {
     const r = await api.from('profiles').select('id,display_name,role').eq('id',me.id).maybeSingle();
@@ -303,7 +309,22 @@ function wireEvents(){
   $('rank-period').addEventListener('change',loadLeaderboard);
   $('auth-form').addEventListener('submit',submitAuth);
   $('auth-switch').addEventListener('click',switchAuth);
-  $('sign-out').addEventListener('click',async()=>{if(active)stopCamera();await api?.auth.signOut();me=null;profile=null;updateIdentity();await loadOverview();showView('home');});
+  $('guest-start').addEventListener('click',()=>{
+    guestMode=true;
+    updateIdentity();
+    showView('home');
+    toast('Guest demo enabled. Workouts will not be saved to an account.');
+  });
+  const openLogin=()=>{ if(active){toast('Finish the workout before signing in.',true);return;} guestMode=false; updateIdentity(); };
+  $('top-auth').addEventListener('click',openLogin);
+  $('sign-out').addEventListener('click',async()=>{
+    if(!me){openLogin();return;}
+    if(active)stopCamera();
+    const {error}=await api.auth.signOut();
+    if(error){toast(error.message,true);return;}
+    me=null;profile=null;guestMode=true;updateIdentity();await loadOverview();showView('home');
+    toast('Signed out. Guest demo remains available without saving sessions.');
+  });
   $('summary-done').addEventListener('click',()=>$('summary-dialog').close());
   $('summary-close').addEventListener('click',()=>$('summary-dialog').close());
   window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
