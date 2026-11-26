@@ -501,6 +501,9 @@ function wireEvents(){
   $('auth-form').addEventListener('submit',submitAuth);
   $('auth-switch').addEventListener('click',()=>switchAuth());
   $('auth-resend').addEventListener('click',resendConfirmation);
+  $('auth-password-visible').addEventListener('change',event=>{
+    $('auth-password').type=event.target.checked?'text':'password';
+  });
   $('guest-start').addEventListener('click',()=>{
     guestMode=true;
     updateIdentity();
