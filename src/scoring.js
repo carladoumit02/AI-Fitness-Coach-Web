@@ -72,8 +72,8 @@ export function updateCounter(counter, metrics, nowSeconds) {
     counter.angles.push(raw);
     if (counter.angles.length > 3) counter.angles.shift();
     const angle = median(counter.angles);
-    const down = counter.exercise === 'squat' ? 115 : 100;
-    const up = counter.exercise === 'squat' ? 155 : 155;
+    const down = counter.calibration?.down ?? (counter.exercise === 'squat' ? 115 : 100);
+    const up = counter.calibration?.up ?? 155;
     if (counter.state === 'ready' && angle <= down) counter.state = 'down';
     else if (counter.state === 'down' && angle >= up) { counter.state = 'ready'; counter.reps++; }
     counter.feedback = counter.state === 'down' ? 'Push back up to complete the rep.' : 'Lower with control.';
