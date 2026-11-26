@@ -15,12 +15,14 @@ export function createRemoteCoach({getExercise=()=> 'squat'}={}){
   const panel=document.createElement('div');
   panel.className='distance-coach-controls';
   panel.innerHTML='<label class="distance-coach-toggle"><input id="distance-coach-voice" type="checkbox"> <span>🔊 Spoken workout instructions</span></label>'+
+    '<button id="distance-coach-pause" class="secondary-btn" type="button" disabled>⏸ Pause</button>'+
     '<button id="distance-coach-fullscreen" class="secondary-btn" type="button" aria-label="Maximize workout view">⤢ Maximize</button>'+
     '<span class="distance-coach-help">Voice works best when your device is not muted. Start the camera to hear coaching.</span>';
   stage.closest('.camera-card')?.appendChild(panel);
 
   const voiceToggle=document.getElementById('distance-coach-voice');
   const fullscreen=document.getElementById('distance-coach-fullscreen');
+  const pause=document.getElementById('distance-coach-pause');
   let enabled=false,lastSpoken='',lastSpokenAt=0,started=false,previousKind='',latestCue=null,lastCount=0;
   let utterance=null;
   try{
@@ -47,6 +49,20 @@ export function createRemoteCoach({getExercise=()=> 'squat'}={}){
     fullscreen.setAttribute('aria-label',expanded?'Minimize workout view':'Maximize workout view');
     fullscreen.setAttribute('aria-pressed',String(expanded));
     fullscreen.title=expanded?'Exit fullscreen (Esc)':'Enter fullscreen workout view';
+  }
+  pause.onclick=()=>onPauseRequest?.();
+  let onPauseRequest=null;
+  function setPauseHandler(fn){onPauseRequest=fn;}
+  function setPaused(value,active){
+    pause.disabled=!active;
+    pause.textContent=value?'▶ Resume':'⏸ Pause';
+    pause.setAttribute('aria-pressed',String(Boolean(value)));
+    overlay.classList.toggle('hidden',!active);
+    if(value){
+      overlay.dataset.kind='paused';
+      document.getElementById('distance-coach-title').textContent='WORKOUT PAUSED';
+      document.getElementById('distance-coach-detail').textContent='Press Resume when you are ready.';
+    }
   }
   fullscreen.onclick=()=>{
     if(!fullscreenRoot)return;
@@ -119,5 +135,5 @@ export function createRemoteCoach({getExercise=()=> 'squat'}={}){
   }
   function stop(){started=false;overlay.classList.add('hidden');previousKind='';lastCount=0;
     if('speechSynthesis' in window)window.speechSynthesis.cancel();}
-  return {update,onCount,markStarted,announce,stop,assessFrame,enabled:()=>enabled,setEnabled};
+  return {update,onCount,markStarted,announce,stop,assessFrame,enabled:()=>enabled,setEnabled,setPaused,setPauseHandler};
 }
