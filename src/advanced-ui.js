@@ -153,6 +153,7 @@ export function createAdvancedUI(hooks){
   }
   function onFrame(points,metrics,counter,stamp){
     state.latestPoints=points;
+    if(state.comparison && points?.length) drawComparison();
     if(!points?.length||!metrics||!counter)return;
     if(state.settings.calibrate&&state.calibration.length<20&&Number.isFinite(metrics.knee||metrics.elbow)){
       const angle=counter.exercise==='squat'?metrics.knee:metrics.elbow;
@@ -252,14 +253,22 @@ export function createAdvancedUI(hooks){
     for(const [a,b] of edges){const p=dict.get(a),q=dict.get(b);if(!p||!q)continue;ctx.beginPath();ctx.moveTo(p.x*w,p.y*h);ctx.lineTo(q.x*w,q.y*h);ctx.stroke();}
     for(const p of dict.values()){ctx.beginPath();ctx.arc(p.x*w,p.y*h,3,0,7);ctx.fill();}
   }
+  function drawComparison(){
+    const can=byId('advanced-reference'),actual=byId('advanced-actual');
+    if(!can||!actual)return;
+    const ctx=can.getContext('2d'),userCtx=actual.getContext('2d');
+    ctx.fillStyle='#0c171d';ctx.fillRect(0,0,can.width,can.height);
+    userCtx.fillStyle='#0c171d';userCtx.fillRect(0,0,actual.width,actual.height);
+    const ref=referencePose(hooks.getExercise(),.5);
+    drawSkeleton(ctx,Object.entries(ref).map(([i,p])=>({i,x:p[0],y:p[1]})),'#73cfff');
+    const userPoints=(state.latestPoints||[]).map((p,i)=>
+      p?.visibility>.45?{i,x:p.x,y:p.y}:null).filter(Boolean);
+    drawSkeleton(userCtx,userPoints,'#c6f36b');
+  }
   function comparison(){
     state.comparison=!state.comparison;
     const wrap=byId('advanced-comparison');wrap.classList.toggle('hidden',!state.comparison);
-    if(!state.comparison)return;
-    const can=byId('advanced-reference');const ctx=can.getContext('2d');
-    ctx.clearRect(0,0,can.width,can.height);
-    const ref=referencePose(hooks.getExercise(),.5);
-    drawSkeleton(ctx,Object.entries(ref).map(([i,p])=>({i,x:p[0],y:p[1]})),'#73cfff');
+    if(state.comparison)drawComparison();
   }
   function replay(){
     const root=byId('advanced-replay');
@@ -338,7 +347,10 @@ export function createAdvancedUI(hooks){
     live.insertBefore(autoInfo,live.querySelector('.workout-grid'));
     byId('advanced-choose-detected').onclick=()=>hooks.useRecognition?.();
     const compare=document.createElement('div');compare.id='advanced-comparison';compare.className='panel card-surface hidden';
-    compare.innerHTML='<strong>REFERENCE SKELETON — schematic only</strong><canvas id="advanced-reference" width="340" height="210"></canvas>';
+    compare.innerHTML='<strong>BODY LANDMARK COMPARISON</strong>'+
+      '<p class="disclaimer">Left: detected landmarks (local). Right: schematic reference, not a medical standard.</p>'+
+      '<div class="advanced-comparison-grid"><div><span>YOUR LANDMARKS</span><canvas id="advanced-actual" width="340" height="210"></canvas></div>'+
+      '<div><span>SCHEMATIC REFERENCE</span><canvas id="advanced-reference" width="340" height="210"></canvas></div></div>';
     live.appendChild(compare);
     const replayRoot=document.createElement('section');replayRoot.id='advanced-replay';replayRoot.className='hidden';live.appendChild(replayRoot);
     container.querySelectorAll('[data-run-preset]').forEach(b=>b.onclick=()=>startPlan(PRESETS[Number(b.dataset.runPreset)]));
