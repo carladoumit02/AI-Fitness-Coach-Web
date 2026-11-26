@@ -342,10 +342,12 @@ export function createAdvancedUI(hooks){
     autoInfo.className='panel card-surface hidden';
     autoInfo.innerHTML='<div class="eyebrow">EXPERIMENTAL EXERCISE RECOGNITION</div>'+
       '<p id="advanced-recognition-status">Collecting pose…</p>'+
-      '<button id="advanced-choose-detected" type="button" class="secondary-btn" disabled>Use suggested exercise</button>'+
+      '<button id="advanced-choose-detected" type="button" class="secondary-btn" disabled>Use suggested exercise</button> '+
+      '<button id="advanced-cancel-recognition" type="button" class="secondary-btn">Cancel recognition</button>'+
       '<p class="disclaimer">This is a geometric posture hint, not Dimitri’s sequence LSTM. Confirm manually.</p>';
     live.insertBefore(autoInfo,live.querySelector('.workout-grid'));
     byId('advanced-choose-detected').onclick=()=>hooks.useRecognition?.();
+    byId('advanced-cancel-recognition').onclick=()=>hooks.cancelRecognition?.();
     const compare=document.createElement('div');compare.id='advanced-comparison';compare.className='panel card-surface hidden';
     compare.innerHTML='<strong>BODY LANDMARK COMPARISON</strong>'+
       '<p class="disclaimer">Left: detected landmarks (local). Right: schematic reference, not a medical standard.</p>'+
