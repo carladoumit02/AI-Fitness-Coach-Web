@@ -48,7 +48,12 @@ export function recognizeExercise(pts){
  const shoulder=pts[11],hip=pts[23],ankle=pts[27];
  const horizontal=Math.abs(shoulder.y-ankle.y)<.3;
  const squatting=(jointAngle(pts[23],pts[25],pts[27])<145);
- if(horizontal)return {exercise:'plank',confidence:.52};
+ if(horizontal){
+   const left=visibility(pts,[11,13,15]);
+   const right=visibility(pts,[12,14,16]);
+   const elbow=left?jointAngle(pts[11],pts[13],pts[15]):right?jointAngle(pts[12],pts[14],pts[16]):NaN;
+   return {exercise:elbow>135?'pushup':'plank',confidence:.52};
+ }
  if(squatting)return {exercise:'squat',confidence:.55};
  return {exercise:'idle',confidence:.35};
 }
