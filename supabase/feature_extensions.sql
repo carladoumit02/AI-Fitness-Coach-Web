@@ -64,3 +64,38 @@ create policy program_sessions_own_insert on public.program_sessions for insert 
 
 -- RLS is independent of the UI's Admin button. All histories are private.
 -- Scores are client-generated educational metrics, and can be manipulated.
+
+
+-- Full programmed workouts now participate in the overall leaderboard,
+-- while exercise filters continue to use individual exercise ratings.
+create or replace function public.get_leaderboard(
+  p_exercise text default 'all', p_period text default 'all'
+)
+returns table(user_id uuid,display_name text,best_score integer,sessions_count bigint)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if auth.uid() is null then raise exception 'Sign in required'; end if;
+  if p_exercise not in ('all','squat','pushup','plank','lunge','curl','jack')
+    or p_period not in ('all','week','today') then
+    raise exception 'Invalid leaderboard filter';
+  end if;
+  return query
+  with entry as (
+    select w.user_id,w.exercise,w.rating,w.created_at from public.workouts w
+    union all
+    select s.user_id,'all'::text as exercise,s.rating,s.created_at
+      from public.program_sessions s
+  )
+  select x.user_id,p.display_name,max(x.rating)::integer,count(*)::bigint
+  from entry x join public.profiles p on p.id=x.user_id
+  where (p_exercise='all' or x.exercise=p_exercise)
+   and (p_period='all'
+    or (p_period='week' and x.created_at>=now()-interval '7 days')
+    or (p_period='today' and x.created_at>=now()-interval '24 hours'))
+  group by x.user_id,p.display_name
+  order by max(x.rating) desc,p.display_name asc
+  limit 100;
+end;
+$$;
+revoke all on function public.get_leaderboard(text,text) from public,anon;
+grant execute on function public.get_leaderboard(text,text) to authenticated;
