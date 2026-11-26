@@ -26,6 +26,7 @@ let paused = false;
 let pausedAt = 0;
 let stream = null;
 let landmarker = null;
+let cachedModelVariant=null;
 let requestId = 0;
 let counter = null;
 let exercise = 'squat';
@@ -239,17 +240,20 @@ function selectExercise(next) {
 }
 async function makeLandmarker() {
   const { PoseLandmarker, FilesetResolver, DrawingUtils } = poseModule ||= await import('@mediapipe/tasks-vision');
-  // Serve the MediaPipe WASM runtime from our own GitHub Pages site, so it
-  // always matches the JS version installed during the Vite build.
+  const variant=exercise==='plank'?'full':'lite';
+  if(landmarker&&cachedModelVariant===variant)return {PoseLandmarker,DrawingUtils};
+  if(landmarker){landmarker.close();landmarker=null;cachedModelVariant=null;}
+  // Reuse the same loaded detector across sets; only change it when switching
+  // between Lite and Full models (e.g. squats -> plank).
   const wasmBase = new URL(`${import.meta.env.BASE_URL}wasm`, window.location.origin).href;
   const vision=await FilesetResolver.forVisionTasks(wasmBase);
-  const variant=exercise==='plank'?'full':'lite';
   const modelAssetPath=`https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${variant}/float16/1/pose_landmarker_${variant}.task`;
   landmarker=await PoseLandmarker.createFromOptions(vision,{
     baseOptions:{modelAssetPath,delegate:'CPU'},runningMode:'VIDEO',numPoses:1,
     minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5
   });
-  return { PoseLandmarker, DrawingUtils };
+  cachedModelVariant=variant;
+  return {PoseLandmarker,DrawingUtils};
 }
 let renderer=null;
 async function startWorkout() {
@@ -458,7 +462,7 @@ function stopCamera(){
   drawingUtils=null;renderCtx=null;
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
   $('webcam').srcObject=null;
-  if(landmarker){landmarker.close();landmarker=null;}
+  // Keep the detector warm for the next workout. The browser closes it on unload.
   $('pose-canvas').getContext('2d')?.clearRect(0,0,$('pose-canvas').width,$('pose-canvas').height);
   $('camera-placeholder').classList.remove('hidden');
   $('workout-start').disabled=false;
@@ -617,10 +621,14 @@ function wireEvents(){
     document.body.appendChild(anchor);anchor.click();anchor.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1500);
   });
-  window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
+  window.addEventListener('beforeunload',()=>{
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+    if(landmarker){landmarker.close();landmarker=null;cachedModelVariant=null;}
+  });
 }
 async function init(){
   distanceCoach=createRemoteCoach({getExercise:()=>exercise});
+  distanceCoach?.setPauseHandler(togglePause);
   advanced=createAdvancedUI({
     showView,selectExercise,togglePause,voiceManagedSeparately:()=>true,finishEarly:()=>void finishWorkout({automatic:false}),
     getExercise:()=>exercise,
