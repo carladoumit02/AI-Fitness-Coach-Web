@@ -270,7 +270,7 @@ export function createAdvancedUI(hooks){
        '<div class="advanced-actions"><button id="advanced-add-set" type="button" class="secondary-btn">+ Add set (max 12)</button> '+
        '<button id="advanced-save-plan" type="button" class="secondary-btn">Save workout</button> '+
        '<button id="advanced-run-plan" type="button" class="primary-btn">Start workout</button></div>'+
-       '<p class="disclaimer">Saved custom programs are stored in this browser for each signed-in identity (not yet synced across devices).</p></div>';
+       '<p class="disclaimer">Custom workouts are saved in this browser, with cloud sync for registered accounts when enabled.</p></div>';
       root.querySelectorAll('[data-set-ex]').forEach(el=>el.onchange=()=>{state.selectedBuilder[Number(el.dataset.setEx)].name=el.value;});
       root.querySelectorAll('[data-set-target]').forEach(el=>el.oninput=()=>{state.selectedBuilder[Number(el.dataset.setTarget)].target=Number(el.value);});
       root.querySelectorAll('[data-set-remove]').forEach(el=>el.onclick=()=>{if(state.selectedBuilder.length>1){state.selectedBuilder.splice(Number(el.dataset.setRemove),1);draw();}});
@@ -355,32 +355,19 @@ export function createAdvancedUI(hooks){
     const home=byId('view-home');
     const section=home.querySelector('.exercise-grid');
     const container=document.createElement('section');container.className='advanced-home';
-    container.innerHTML='<div class="section-title"><div><div class="eyebrow">DIMITRI ORIGINAL V2</div><h2>Guided training programs</h2></div></div>'+
+    container.innerHTML='<div class="section-title"><div><div class="eyebrow">GUIDED WORKOUTS</div><h2>Choose a training program</h2></div></div>'+
       '<div class="advanced-program-grid">'+PRESETS.map((p,i)=>'<article class="panel card-surface"><div class="eyebrow">LEVEL '+(i+1)+'</div><h3>'+p.name+'</h3><p>'+p.description+'</p>'+
       '<div class="advanced-plan-list">'+p.exercises.map(e=>'<div>'+label(e.name)+' <strong>'+e.target+' '+EXERCISES[e.name].unit+'</strong></div>').join('')+'</div>'+
       '<p>Rest: '+p.rest+' seconds</p><button type="button" class="primary-btn full" data-run-preset="'+i+'">Start '+p.name+'</button></article>').join('')+'</div>'+
       '<div class="advanced-actions"><button id="advanced-open-builder" class="secondary-btn" type="button">Create custom workout</button> '+
-      '<button id="advanced-open-analytics" class="secondary-btn" type="button">Performance analytics</button> '+
-      '<button id="advanced-open-recognition" class="secondary-btn" type="button">Exercise recognition (experimental)</button></div>'+
+      '<button id="advanced-open-analytics" class="secondary-btn" type="button">Progress insights</button></div>'+
       '<div class="panel card-surface advanced-settings"><strong>Coaching preferences</strong>'+
       '<label><input id="advanced-voice" type="checkbox"> Voice guidance</label>'+
       '<label><input id="advanced-adaptive" type="checkbox"> Adaptive targets / rest</label>'+
       '<label><input id="advanced-calibrate" type="checkbox"> Starting-angle calibration</label>'+
       '<button id="advanced-save-settings" type="button" class="secondary-btn">Save preferences</button>'+
-      '<p class="disclaimer">Experimental browser coaching, with locally saved preferences. Desktop models are not yet fully ported.</p></div>';
+      '<p class="disclaimer">These settings are optional and use experimental movement feedback.</p></div>';
     home.insertBefore(container,section.parentNode===home?section:home.lastChild);
-    // Extra exercise cards, preserving all existing three.
-    for(const [code,ex] of Object.entries(EXERCISES).slice(3)){
-      const button=document.createElement('button');button.type='button';button.className='exercise-card';button.dataset.exercise=code;
-      button.innerHTML='<div class="exercise-number">DIMITRI V2 / ADDITIONAL</div><div class="exercise-icon">◎</div>'+
-        '<h3>'+ex.label+'</h3><p>'+ex.view+' view · '+ex.unit+' · geometric cues</p><span>Start '+ex.label+' ↗</span>';
-      section.appendChild(button);button.addEventListener('click',()=>hooks.selectExercise(code));
-    }
-    for(const [code,ex] of Object.entries(EXERCISES).slice(3)){
-      const select=byId('exercise-select');const option=document.createElement('option');option.value=code;option.textContent=ex.label;select.appendChild(option);
-      const filter=byId('rank-exercise');const filterOption=document.createElement('option');
-      filterOption.value=code;filterOption.textContent=ex.label;filter.appendChild(filterOption);
-    }
     const builderRoot=document.createElement('section');builderRoot.id='advanced-builder';builderRoot.className='hidden';home.appendChild(builderRoot);
     const analyticsRoot=document.createElement('section');analyticsRoot.id='advanced-analytics';analyticsRoot.className='hidden';home.appendChild(analyticsRoot);
     const lastResult=document.createElement('section');lastResult.id='advanced-program-results';lastResult.className='hidden';home.appendChild(lastResult);
@@ -400,7 +387,7 @@ export function createAdvancedUI(hooks){
       '<p id="advanced-recognition-status">Collecting pose…</p>'+
       '<button id="advanced-choose-detected" type="button" class="secondary-btn" disabled>Use suggested exercise</button> '+
       '<button id="advanced-cancel-recognition" type="button" class="secondary-btn">Cancel recognition</button>'+
-      '<p class="disclaimer">This is a geometric posture hint, not Dimitri’s sequence LSTM. Confirm manually.</p>';
+      '<p class="disclaimer">Experimental camera suggestions require manual confirmation.</p>';
     live.insertBefore(autoInfo,live.querySelector('.workout-grid'));
     byId('advanced-choose-detected').onclick=()=>hooks.useRecognition?.();
     byId('advanced-cancel-recognition').onclick=()=>hooks.cancelRecognition?.();
@@ -414,7 +401,6 @@ export function createAdvancedUI(hooks){
     container.querySelectorAll('[data-run-preset]').forEach(b=>b.onclick=()=>startPlan(PRESETS[Number(b.dataset.runPreset)]));
     byId('advanced-open-builder').onclick=builder;
     byId('advanced-open-analytics').onclick=analytics;
-    byId('advanced-open-recognition').onclick=()=>hooks.startRecognition?.();
     byId('advanced-save-settings').onclick=savePrefs;
     byId('advanced-pause').onclick=()=>hooks.togglePause?.();
     byId('advanced-compare').onclick=comparison;
