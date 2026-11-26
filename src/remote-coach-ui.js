@@ -66,7 +66,17 @@ export function createRemoteCoach({getExercise=()=> 'squat'}={}){
     if(urgent&&text===lastSpoken&&now-lastSpokenAt<950)return;
     if(window.speechSynthesis.speaking)window.speechSynthesis.cancel();
     utterance=new SpeechSynthesisUtterance(text);
-    utterance.lang='en-US';utterance.rate=.94;utterance.volume=1;
+    // Specifying en-US alone does not choose a voice. Prefer an explicitly
+    // American English voice instead of the browser's system-default accent.
+    const voices=window.speechSynthesis.getVoices?.()||[];
+    const american=voices.filter(v=>/^en[-_]US$/i.test(v.lang));
+    const british=voices.filter(v=>/^en[-_]GB$/i.test(v.lang));
+    const known=/samantha|alex|google us english|aria|jenny|davis|allison|ava|english \(united states\)/i;
+    const chosen=american.find(v=>known.test(v.name)) || american[0] ||
+      british.find(v=>/daniel|serena|google uk english|sonia|ryan/i.test(v.name)) || british[0] || null;
+    if(chosen)utterance.voice=chosen;
+    utterance.lang=chosen?.lang || 'en-US';
+    utterance.rate=.94;utterance.volume=1;
     window.speechSynthesis.speak(utterance);
     lastSpoken=text;lastSpokenAt=now;
   }
