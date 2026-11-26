@@ -75,3 +75,48 @@
  .distance-coach-controls{padding:12px}
  .camera-stage{min-height:290px}
 }
+
+
+/* Centered, consistently sized brand monogram. */
+.brand-mark{flex:0 0 42px;width:42px;height:42px;min-width:42px;min-height:42px;
+  display:flex;align-items:center;justify-content:center;padding:0;overflow:hidden;
+  font-family:Outfit,system-ui,sans-serif;letter-spacing:0}
+.brand-mark .brand-monogram{display:block;white-space:nowrap;line-height:1;
+  font-size:16px;font-weight:900;letter-spacing:-1.5px;color:#182721;
+  transform:translateX(-.7px)}
+/* Workout entry chooser: simple, modal, accessible and phone responsive. */
+.choice-dialog{background:#111e23;color:#eef6f0;border:1px solid #3c5d58;
+  border-radius:20px;padding:0;width:min(730px,94vw);max-height:91dvh;overflow:auto;
+  box-shadow:0 30px 75px #000b}
+.choice-dialog::backdrop{background:rgba(3,8,10,.83);backdrop-filter:blur(5px)}
+.choice-inner{position:relative;padding:36px}
+.choice-inner h2{font:800 clamp(25px,3.5vw,35px)/1.12 Outfit,system-ui,sans-serif;margin:11px 40px 10px 0}
+.choice-subtitle{color:#aec2bf;font-size:13px;line-height:1.65;margin:0 0 22px}
+.choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.choice-card{width:100%;display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:11px;
+  border:1px solid #3b5458;background:#182a2e;color:#eff9ef;padding:24px;border-radius:15px;
+  min-height:235px;transition:border-color .15s,transform .15s,background .15s}
+.choice-card:hover,.choice-card:focus-visible,.choice-preset:hover,.choice-preset:focus-visible{
+  border-color:#c6f36b;background:#1e3530}
+.choice-card:hover{transform:translateY(-2px)}
+.choice-card strong{font:800 22px Outfit,system-ui,sans-serif}
+.choice-card>span:not(.choice-symbol){color:#adc4c1;font-size:12px;line-height:1.6;flex:1}
+.choice-symbol{font-size:32px;color:#c6f36b;line-height:1}
+.choice-card em,.choice-preset em{font-style:normal;color:#c6f36b;font-weight:800;font-size:12px}
+.choice-back{display:block;margin:0 0 17px}
+.choice-presets{display:grid;gap:11px}
+.choice-preset{display:flex;justify-content:space-between;align-items:center;gap:15px;width:100%;
+  text-align:left;color:#f0f8f1;background:#19292d;border:1px solid #375356;
+  border-radius:12px;padding:17px 20px}
+.choice-preset span{display:grid;gap:6px}
+.choice-preset strong{font:800 19px Outfit,system-ui,sans-serif}
+.choice-preset small{color:#adc2c1;font-size:12px}
+.choice-audio{margin-top:20px;padding-top:19px;border-top:1px solid #30464a}
+.choice-audio label{display:flex;align-items:flex-start;gap:12px;cursor:pointer}
+.choice-audio input{flex:0 0 20px;width:20px;height:20px;margin:2px 0 0;accent-color:#c6f36b}
+.choice-audio span{display:grid;gap:5px}
+.choice-audio strong{font-weight:800;font-size:13px}
+.choice-audio small{color:#a8bfba;font-size:11px;line-height:1.45}
+@media(max-width:600px){.choice-inner{padding:25px 20px}.choice-grid{grid-template-columns:1fr}
+ .choice-card{min-height:175px;padding:19px}.choice-card strong{font-size:19px}
+ .choice-preset{padding:15px}.brand-mark{flex-basis:42px}}
