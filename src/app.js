@@ -6,6 +6,7 @@ import { createAdvancedUI } from './advanced-ui.js';
 import { extraMetrics, updateExtraCounter, recognizeExercise } from './extra-exercises.js';
 import { shouldAutoFinish, workoutCompletionLabel, setCompletionLabel } from './session-flow.js';
 import {createRemoteCoach} from './remote-coach-ui.js';
+import {resumeWorkoutClock,shouldPauseForHiddenTab} from './workout-clock.js';
 
 const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const siteRedirect = new URL(import.meta.env.BASE_URL, window.location.origin).href;
@@ -45,6 +46,10 @@ let countdownUntil=0;
 let finishingWorkout=false;
 let lastExport=null;
 let distanceCoach=null;
+let startupPending=false;
+let drawingUtils=null;
+let renderCtx=null;
+let lastMetricsAt=0;
 
 function toast(message, error = false) {
   const el = $('notice');
@@ -248,11 +253,12 @@ async function makeLandmarker() {
 }
 let renderer=null;
 async function startWorkout() {
-  if (active) return;
+  if (active || startupPending) return;
   if (!navigator.mediaDevices?.getUserMedia) {toast('Webcam access requires HTTPS or localhost and a supported browser.',true);return;}
   target=Math.trunc(Number($('target-input').value));
   if(!(target>=1&&target<=300)){toast('Choose a target between 1 and 300.',true);return;}
   exercise=$('exercise-select').value;
+  startupPending=true;
   $('workout-start').disabled=true;
   distanceCoach?.markStarted(exercise);
   $('camera-status').textContent='STARTING…';
@@ -266,6 +272,9 @@ async function startWorkout() {
     $('camera-placeholder').classList.add('hidden');
     $('camera-status').textContent='LOADING POSE TRACKING…';
     renderer=await makeLandmarker();
+    const canvas=$('pose-canvas');
+    renderCtx=canvas.getContext('2d');
+    drawingUtils=new renderer.DrawingUtils(renderCtx);
     counter=makeCounter(exercise);
     if(advanced?.getState().plan){
       // Program set already populated the desired target before camera initialization.
@@ -273,7 +282,9 @@ async function startWorkout() {
     }
     startedAt=performance.now()/1000;
     lastFrame=-1;lastInference=0;
-    active=true;paused=false;finishingWorkout=false;
+    active=true;paused=false;finishingWorkout=false;startupPending=false;
+    lastMetricsAt=0;
+    syncPauseUi();
     sessionPhase=recognitionMode?'active':'position';readySince=null;countdownUntil=0;
     $('camera-placeholder').classList.add('hidden');
     document.querySelector('.record-dot').classList.add('live');
@@ -292,7 +303,7 @@ async function startWorkout() {
 }
 function tick(timestamp) {
   if(!active)return;
-  if(paused){requestId=requestAnimationFrame(tick);return;}
+  if(paused)return; // A paused workout does not schedule unnecessary render/inference frames.
   const video=$('webcam');
   const canvas=$('pose-canvas');
   if(video.readyState >= 2 && timestamp-lastInference>95 && video.currentTime!==lastFrame){
@@ -301,13 +312,13 @@ function tick(timestamp) {
     try{
       const result=landmarker.detectForVideo(video,timestamp);
       const points=result.landmarks?.[0];
-      canvas.width=video.videoWidth;canvas.height=video.videoHeight;
-      const ctx=canvas.getContext('2d');
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+      if(canvas.width!==video.videoWidth||canvas.height!==video.videoHeight){
+        canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+      }
+      renderCtx.clearRect(0,0,canvas.width,canvas.height);
       if(points?.length){
-        const drawer=new renderer.DrawingUtils(ctx);
-        drawer.drawConnectors(points,renderer.PoseLandmarker.POSE_CONNECTIONS,{color:'#c6f36b',lineWidth:3});
-        drawer.drawLandmarks(points,{color:'#ffad6a',fillColor:'#ffad6a',radius:3});
+        drawingUtils.drawConnectors(points,renderer.PoseLandmarker.POSE_CONNECTIONS,{color:'#c6f36b',lineWidth:3});
+        drawingUtils.drawLandmarks(points,{color:'#ffad6a',fillColor:'#ffad6a',radius:3});
       }
       const oldReps=counter?.reps??0;
       if(!recognitionMode && sessionPhase!=='active'){
@@ -372,8 +383,6 @@ function tick(timestamp) {
       const frame=distanceCoach?.assessFrame(points,exercise);
       distanceCoach?.update({exercise,phase:'active',frame,feedback:counter.feedback});
       distanceCoach?.onCount(counter,target);
-      const hint=recognizeExercise(points);
-      recognitionHint=hint.exercise==='idle'?'Movement not identified':('Possible '+(niceExercise[hint.exercise]||hint.exercise));
       if(shouldAutoFinish(counter,target,sessionPhase,finishingWorkout)){
         // Works for individual workouts AND guided-program sets.
         // Stop counting at the completed-rep/valid-hold target.
@@ -381,7 +390,10 @@ function tick(timestamp) {
         return;
       }
       $('pose-state').textContent=m?.confidence>=.45?'BODY TRACKED':'MOVE INTO FRAME';
-      setLiveData();
+      if(timestamp-lastMetricsAt>=240){
+        lastMetricsAt=timestamp;
+        setLiveData();
+      }
     }catch(e){
       console.error(e);
       toast(`Pose tracking stopped: ${e.message}`,true);
@@ -403,26 +415,47 @@ function setLiveData(){
   if(status)status.textContent=recognitionHint;
 }
 function formatTime(seconds){const n=Math.max(0,Math.floor(seconds));return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;}
+function syncPauseUi(){
+  const control=$('advanced-pause');
+  if(control){
+    control.disabled=!active;
+    control.textContent=paused?'▶ Resume':'⏸ Pause';
+    control.setAttribute('aria-pressed',String(paused));
+  }
+  distanceCoach?.setPaused(paused,active);
+}
 function togglePause(){
   if(!active)return toast('Start the camera before pausing.',true);
-  if(!paused){paused=true;pausedAt=performance.now();$('camera-status').textContent='PAUSED';}
-  else{
-    paused=false;startedAt+=(performance.now()-pausedAt)/1000;
-    if(sessionPhase==='countdown')countdownUntil+=performance.now()-pausedAt;
-    if(sessionPhase==='position')readySince=null;
+  if(!paused){
+    paused=true;pausedAt=performance.now();
+    cancelAnimationFrame(requestId);requestId=0;
+    $('camera-status').textContent='PAUSED';
+    distanceCoach?.announce('Workout paused.');
+  }else{
+    const now=performance.now();
+    const corrected=resumeWorkoutClock({pausedAtMs:pausedAt,nowMs:now,startedAtSec:startedAt,countdownUntilMs:countdownUntil,phase:sessionPhase});
+    startedAt=corrected.startedAtSec;
+    countdownUntil=corrected.countdownUntilMs;
+    if(sessionPhase==='position'||sessionPhase==='countdown')readySince=null;
     if(counter)counter.lastTime=null;
+    lastFrame=-1;lastInference=now;paused=false;
     $('camera-status').textContent='LIVE SESSION';
+    requestId=requestAnimationFrame(tick);
+    distanceCoach?.announce('Workout resumed.');
   }
+  syncPauseUi();
 }
 function stopCamera(){
   advanced?.onStop();
   distanceCoach?.stop();
-  active=false;paused=false;sessionPhase='idle';readySince=null;
+  active=false;paused=false;startupPending=false;sessionPhase='idle';readySince=null;
+  syncPauseUi();
   if(recognitionMode){
     recognitionMode=false;recognizedExercise=null;recognitionStreak=0;
     $('advanced-auto-info')?.classList.add('hidden');
   }
-  cancelAnimationFrame(requestId);
+  cancelAnimationFrame(requestId);requestId=0;
+  drawingUtils=null;renderCtx=null;
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
   $('webcam').srcObject=null;
   if(landmarker){landmarker.close();landmarker=null;}
@@ -572,6 +605,9 @@ function wireEvents(){
     }
   });
   $('summary-close').addEventListener('click',()=>$('summary-dialog').close());
+  document.addEventListener('visibilitychange',()=>{
+    if(shouldPauseForHiddenTab({active,paused,hidden:document.hidden}))togglePause();
+  });
   $('summary-export').addEventListener('click',()=>{
     if(!lastExport)return;
     const filename='fitness-workout-'+new Date().toISOString().slice(0,10)+'.json';
