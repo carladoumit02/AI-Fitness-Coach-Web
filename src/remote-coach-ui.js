@@ -14,25 +14,31 @@ export function createRemoteCoach({getExercise=()=> 'squat'}={}){
 
   const panel=document.createElement('div');
   panel.className='distance-coach-controls';
-  panel.innerHTML='<label class="distance-coach-toggle"><input id="distance-coach-voice" type="checkbox" checked> <span>🔊 Spoken workout instructions</span></label>'+
+  panel.innerHTML='<label class="distance-coach-toggle"><input id="distance-coach-voice" type="checkbox"> <span>🔊 Spoken workout instructions</span></label>'+
     '<button id="distance-coach-fullscreen" class="secondary-btn" type="button">⛶ Large workout view</button>'+
     '<span class="distance-coach-help">Voice works best when your device is not muted. Start the camera to hear coaching.</span>';
   stage.closest('.camera-card')?.appendChild(panel);
 
   const voiceToggle=document.getElementById('distance-coach-voice');
   const fullscreen=document.getElementById('distance-coach-fullscreen');
-  let enabled=true,lastSpoken='',lastSpokenAt=0,started=false,previousKind='',latestCue=null,lastCount=0;
+  let enabled=false,lastSpoken='',lastSpokenAt=0,started=false,previousKind='',latestCue=null,lastCount=0;
   let utterance=null;
   try{
     const x=localStorage.getItem('motionlab_spoken_instructions');
     if(x!=null)enabled=x==='true';
   }catch{}
   voiceToggle.checked=enabled;
-  voiceToggle.onchange=()=>{
-    enabled=voiceToggle.checked;
+  function setEnabled(value){
+    enabled=Boolean(value);
+    voiceToggle.checked=enabled;
+    const chooser=document.getElementById('choice-voice');
+    if(chooser)chooser.checked=enabled;
     try{localStorage.setItem('motionlab_spoken_instructions',String(enabled));}catch{}
-    if(enabled){speak('Spoken instructions are on.',true);}
-    else if('speechSynthesis' in window)window.speechSynthesis.cancel();
+    if(!enabled&&'speechSynthesis' in window)window.speechSynthesis.cancel();
+  }
+  voiceToggle.onchange=()=>{
+    setEnabled(voiceToggle.checked);
+    if(enabled)speak('Spoken instructions are on.',true);
   };
   fullscreen.onclick=()=>{
     const root=stage.closest('.camera-card');
@@ -83,8 +89,12 @@ export function createRemoteCoach({getExercise=()=> 'squat'}={}){
       if(n>0&&(n%5===0||n===Math.floor(target)))speak(n+' seconds',true);
     }else speak(String(n),true);
   }
-  function announce(text){speak(text,true);}
+  function announce(text){
+    if(!enabled||!('speechSynthesis' in window)||!text)return;
+    // Rest and completion prompts can be spoken after camera tracking stops.
+    started=true;speak(text,true);started=false;
+  }
   function stop(){started=false;overlay.classList.add('hidden');previousKind='';lastCount=0;
     if('speechSynthesis' in window)window.speechSynthesis.cancel();}
-  return {update,onCount,markStarted,announce,stop,assessFrame,enabled:()=>enabled};
+  return {update,onCount,markStarted,announce,stop,assessFrame,enabled:()=>enabled,setEnabled};
 }
