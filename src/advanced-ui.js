@@ -104,6 +104,9 @@ export function createAdvancedUI(hooks){
       if(recent.attempts?.length>=6&&recent.motion?.performance_change?.decline)rest+=15;
     }
     state.restUntil=Date.now()+rest*1000;
+    byId('workout-start').disabled=true;
+    byId('exercise-select').disabled=true;
+    byId('target-input').disabled=true;
     const region=byId('advanced-rest');region.classList.remove('hidden');
     function renderRest(){
       const remaining=Math.max(0,Math.ceil((state.restUntil-Date.now())/1000));
@@ -115,7 +118,13 @@ export function createAdvancedUI(hooks){
       byId('advanced-add-rest').onclick=()=>{state.restUntil+=15000;renderRest();};
       if(remaining===0)finishRest();
     }
-    function finishRest(){stopRest();region.classList.add('hidden');setStep();hooks.showView('workout');}
+    function finishRest(){
+      stopRest();region.classList.add('hidden');
+      byId('workout-start').disabled=false;
+      byId('exercise-select').disabled=false;
+      byId('target-input').disabled=false;
+      setStep();hooks.showView('workout');
+    }
     state.restHandle=setInterval(renderRest,1000);renderRest();
     speak('Time to rest',true);
   }
@@ -201,7 +210,14 @@ export function createAdvancedUI(hooks){
     state.calibration=[];state.previousAngle=null;
     if('speechSynthesis' in window)window.speechSynthesis.cancel();
   }
-  function cancelPlan(){if(!state.plan)return;stopRest();state.plan=null;byId('advanced-program-live').classList.add('hidden');byId('advanced-rest').classList.add('hidden');}
+  function cancelPlan(){
+    if(!state.plan)return;stopRest();state.plan=null;
+    byId('workout-start').disabled=false;
+    byId('exercise-select').disabled=false;
+    byId('target-input').disabled=false;
+    byId('advanced-program-live').classList.add('hidden');
+    byId('advanced-rest').classList.add('hidden');
+  }
   function cancelRest(){stopRest();}
   function builder(){
     const root=byId('advanced-builder');
