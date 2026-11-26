@@ -14,7 +14,7 @@
 <body>
   <div id="app-shell" class="app-shell">
     <aside class="sidebar">
-      <div class="brand"><div class="brand-mark">M<span>/</span>L</div><div><strong>MOTION / LAB</strong><small>AI FITNESS COACH</small></div></div>
+      <div class="brand"><div class="brand-mark" aria-label="Motion Lab"><span class="brand-monogram">M/L</span></div><div><strong>MOTION / LAB</strong><small>AI FITNESS COACH</small></div></div>
       <div class="side-label">WORKSPACE</div>
       <nav aria-label="Primary navigation">
         <button class="nav-item active" data-view="home"><span class="nav-icon">⌂</span> Dashboard</button>
@@ -43,7 +43,7 @@
           <div class="hero-copy"><div class="eyebrow lime">TRAIN SMARTER. PROGRESS TOGETHER.</div>
           <h1>Every rep <span>counts.</span></h1>
           <p>Your personal workout space. Get body-landmark feedback from your camera, save your results, and track improvement over time.</p>
-          <button id="hero-start" class="primary-btn">Start a workout <span>→</span></button></div>
+          <button id="hero-start" class="primary-btn" type="button">Start training <span>→</span></button></div>
           <div class="hero-art" aria-hidden="true"><div class="art-ring ring-one"></div><div class="art-ring ring-two"></div><div class="art-figure">✳</div><span class="art-label">MOTION TRACKING / LIVE</span></div>
         </div>
         <div class="section-title"><div><div class="eyebrow">YOUR SPACE</div><h2>Training overview</h2></div><span class="muted">Progress updates as you train</span></div>
@@ -79,6 +79,46 @@
       <section id="view-admin" class="view hidden"><div class="page-heading"><div class="eyebrow">ADMINISTRATOR ONLY</div><h1>Manage accounts</h1><p>Review registered athletes. Deleting a user permanently removes their login and saved workout history.</p></div><div class="panel card-surface"><div class="list-header"><strong>Registered users</strong><span>Actions</span></div><div id="admin-users"><div class="empty-state">Admin access required.</div></div></div></section>
     </main>
   </div>
+
+
+  <dialog id="workout-choice" class="choice-dialog" aria-labelledby="choice-title">
+    <div class="choice-inner">
+      <button id="choice-close" class="dialog-close" type="button" aria-label="Close workout choices">×</button>
+      <div id="choice-menu">
+        <div class="eyebrow lime">YOUR WORKOUT, YOUR WAY</div>
+        <h2 id="choice-title">How would you like to train?</h2>
+        <p class="choice-subtitle">Choose a ready-made plan or build a session with squats, push-ups, and planks.</p>
+        <div class="choice-grid">
+          <button id="choice-guided" class="choice-card" type="button">
+            <span class="choice-symbol" aria-hidden="true">◉</span>
+            <strong>Guided workout</strong>
+            <span>Choose Beginner, Intermediate or Advanced. We'll guide you through each exercise and rest.</span>
+            <em>Choose a plan →</em>
+          </button>
+          <button id="choice-custom" class="choice-card" type="button">
+            <span class="choice-symbol" aria-hidden="true">✳</span>
+            <strong>Create my own</strong>
+            <span>Choose exercises, repetitions, plank duration and rest time.</span>
+            <em>Build a workout →</em>
+          </button>
+        </div>
+      </div>
+      <div id="choice-programs" class="hidden">
+        <button id="choice-back" class="text-button choice-back" type="button">← Back to choices</button>
+        <div class="eyebrow lime">GUIDED WORKOUTS</div>
+        <h2 id="choice-program-title">Choose your program</h2>
+        <p class="choice-subtitle">Each program includes squats, push-ups, a plank and rest between exercises.</p>
+        <div class="choice-presets">
+          <button type="button" class="choice-preset" data-choice-preset="0"><span><strong>Beginner</strong><small>10 squats · 5 push-ups · 20s plank</small></span><em>Start →</em></button>
+          <button type="button" class="choice-preset" data-choice-preset="1"><span><strong>Intermediate</strong><small>15 squats · 10 push-ups · 40s plank</small></span><em>Start →</em></button>
+          <button type="button" class="choice-preset" data-choice-preset="2"><span><strong>Advanced</strong><small>25 squats · 20 push-ups · 60s plank</small></span><em>Start →</em></button>
+        </div>
+      </div>
+      <div class="choice-audio">
+        <label for="choice-voice"><input id="choice-voice" type="checkbox" /> <span><strong>Enable spoken coaching</strong><small>Optional — visual guidance always stays on. You can change this during the workout.</small></span></label>
+      </div>
+    </div>
+  </dialog>
 
   <div id="auth-overlay" class="auth-overlay hidden"><div class="auth-panel card-surface"><div class="eyebrow lime">WELCOME TO MOTION / LAB</div><h1 id="auth-heading">Sign in</h1><p>Sign in to save your workouts and join the leaderboard, or choose Guest to try the app without an account.</p><form id="auth-form"><label for="auth-name" id="name-label" class="form-label hidden">Display name</label><input id="auth-name" class="hidden" type="text" autocomplete="name" placeholder="Your name" minlength="2" maxlength="70"/><label for="auth-email" class="form-label">Email</label><input id="auth-email" type="email" required autocomplete="email" placeholder="you@example.com"/><label for="auth-password" class="form-label">Password</label><input id="auth-password" type="password" required minlength="8" autocomplete="current-password" placeholder="At least 8 characters"/><label class="auth-password-option"><input id="auth-password-visible" type="checkbox" /> Show password</label><button class="primary-btn full" id="auth-submit" type="submit">Sign in</button></form><p id="auth-error" class="form-error hidden" role="alert"></p><p id="auth-help" class="auth-help hidden" role="status"></p><button id="auth-resend" class="text-button hidden" type="button">Resend confirmation email</button><button class="text-button auth-switch" id="auth-switch" type="button">New here? Create an account</button><button class="secondary-btn full" id="guest-start" type="button">Continue as Guest — Try the exercises</button><div class="auth-footer">Guest workouts are not saved to the leaderboard or personal history. Sign in to save progress.<div style="margin-top:8px">Your camera footage is processed locally, not saved to the database.</div></div></div></div>
 
