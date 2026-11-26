@@ -4,6 +4,39 @@ A browser-based version of the EECE 490 fitness-coach project, based on Dimitri'
 
 **Repository:** https://github.com/carladoumit02/AI-Fitness-Coach-Web
 
+## Dimitri V2/V3 restoration status (Nov 2026)
+
+This web version **preserves the existing sign-in, optional guest preview, per-exercise grades, Supabase account history, shared leaderboard, and admin deletion**. It additionally ports the following original desktop features:
+
+- **Exact Beginner, Intermediate, Advanced programs** from Dimitri V2 `config.json`, sequential exercise sets, configurable rest/skip/+15 seconds, exercise and program summaries.
+- **Custom program builder** for 1–12 exercise sets, exercise ordering, targets, rest; optionally synced per account after database migration.
+- **Six exercise modes:** squats, push-ups, forearm plank, stationary lunges, bicep curls, jumping jacks. Extra exercises use experimental geometric movement cues.
+- Optional **voice guidance**, **adaptive targets/rest**, and **personal starting-angle calibration**.
+- **Pause/resume**, starting-position detection and countdown, **motion tempo/range trend summaries**, **landmark-only replay**, and **tracked-vs-reference schematic comparison**.
+- An optional **experimental browser recognition suggestion** for squat/push-up/plank, which requires manual confirmation.
+
+**Not equivalent yet:** Dimitri's original packaged `models/form.json` and `models/sequence.json` have *not* been deployed to GitHub Pages. The web counters and quality estimates are browser geometric heuristics, **not Dimitri's trained model predictions**. Desktop LSTM recognition, validated model-based quality, and advanced admin password-reset/create-admin workflows remain in the original V3 Windows application. Do not describe the web version as an exact model-level reproduction. The trained sequence model was created using synthetic training features; it has not been independently validated on human videos.
+
+### Activate six-exercise cloud history and program synchronization
+
+The new program and preference tables require a **one-time additional SQL migration**:
+
+1. Open Supabase SQL Editor for the existing AI Fitness Coach project.
+2. Copy and run `supabase/feature_extensions.sql` **once, after** the existing `supabase/schema.sql` (already installed).
+3. Verify the script returns `Success. No rows returned.`
+4. In Supabase Authentication → URL Configuration, set the Site URL to `https://carladoumit02.github.io/AI-Fitness-Coach-Web/` and add the same URL to Redirect URLs.
+5. Register, verify email if required, then test a second standard user. Admin creation uses the owner-only SQL Editor command at the end of the original schema.
+6. Do not share secrets, database passwords or service-role credentials; only the public publishable key belongs in the website.
+
+Without the extension migration, accounts and the original three-exercise workout history continue working, but extra-exercise inserts and whole-program cloud saves will fail. Custom plans/preferences fall back to storage in the current browser. Guest sessions are never saved to Supabase.
+
+### Safety and testing notes
+
+- Real Mac/Windows webcam and pose quality must be checked on-device before a professor demo. GitHub Action builds and unit tests do not prove correct rep counts.
+- Real video frames are not persisted by the web application. Landmark replay is session-only and kept in memory.
+- Physical activity and form scores are educational and experimental. Camera perspective, body visibility, confidence thresholds and target difficulty can bias grades.
+- Original desktop V2/V3 archives have not been edited or removed. The original Python app still provides the full model-backed Windows workflow.
+
 ## What is implemented
 
 - Responsive Mac/Windows browser interface: dashboard, live workout studio, progress, leaderboard and admin accounts.
