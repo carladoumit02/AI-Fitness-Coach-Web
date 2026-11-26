@@ -33,6 +33,9 @@ let poseModule = null;
 let nextToastTimer;
 let advanced=null;
 let recognitionHint='';
+let recognitionMode=false;
+let recognizedExercise=null;
+let recognitionStreak=0;
 
 function toast(message, error = false) {
   const el = $('notice');
@@ -257,6 +260,21 @@ function tick(timestamp) {
         drawer.drawLandmarks(points,{color:'#ffad6a',fillColor:'#ffad6a',radius:3});
       }
       const oldReps=counter?.reps??0;
+      if(recognitionMode){
+        const detected=recognizeExercise(points);
+        const candidate=detected.exercise==='idle'?null:detected.exercise;
+        recognitionStreak=candidate && candidate===recognizedExercise?recognitionStreak+1:1;
+        recognizedExercise=candidate;
+        const stable=recognizedExercise&&recognitionStreak>=6;
+        const targetButton=$('advanced-choose-detected');
+        if(targetButton)targetButton.disabled=!stable;
+        $('advanced-recognition-status').textContent=stable?
+          ('Suggested: '+niceExercise[recognizedExercise]+' (experimental). Confirm to continue.') :
+          (candidate?('Checking '+niceExercise[candidate]+'… hold the pose.'):'Move fully into frame.');
+        $('pose-state').textContent=points?.length?'POSE DETECTED':'MOVE INTO FRAME';
+        requestId=requestAnimationFrame(tick);
+        return;
+      }
       const m=['lunge','curl','jack'].includes(exercise)?extraMetrics(points,exercise):getMetrics(points);
       if(['lunge','curl','jack'].includes(exercise))updateExtraCounter(counter,m,timestamp/1000);
       else updateCounter(counter,m,timestamp/1000);
@@ -319,6 +337,7 @@ function stopCamera(){
   $('pose-state').textContent='No pose yet';
 }
 async function finishWorkout(){
+  if(recognitionMode){toast('Confirm the detected exercise before starting a workout.',true);return;}
   if(!active || !counter)return;
   const exerciseUsed=counter.exercise;
   const achieved=observedCount(counter);
@@ -395,8 +414,22 @@ async function init(){
     isActive:()=>active,
     toast,
     startRecognition:()=>{
-      showView('workout');
-      toast('Exercise recognition is a preliminary posture hint, not Dimitri’s LSTM. Select an exercise for counting.');
+      if(active)return toast('Finish the current workout first.',true);
+      recognitionMode=true;recognizedExercise=null;recognitionStreak=0;
+      selectExercise('squat');
+      $('advanced-auto-info').classList.remove('hidden');
+      $('advanced-recognition-status').textContent='Starting camera…';
+      $('advanced-choose-detected').disabled=true;
+      toast('Experimental recognition: hold a squat, push-up, or plank pose. Confirm the suggestion manually.');
+      void startWorkout();
+    },
+    useRecognition:()=>{
+      if(!recognizedExercise||recognitionStreak<6)return;
+      const chosen=recognizedExercise;
+      stopCamera();recognitionMode=false;recognizedExercise=null;
+      $('advanced-auto-info').classList.add('hidden');
+      selectExercise(chosen);
+      toast('Suggested exercise selected: '+niceExercise[chosen]+'. Choose a target and press Start camera.');
     },
     loadSettings:async()=>{
       if(!me)return null;
