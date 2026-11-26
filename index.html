@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b1218" />
+  <meta name="description" content="AI Fitness Coach — track your workouts, see real-time pose feedback, and compete on the leaderboard." />
+  <title>MOTION / LAB — AI Fitness Coach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <div id="app-shell" class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">M<span>/</span>L</div><div><strong>MOTION / LAB</strong><small>AI FITNESS COACH</small></div></div>
+      <div class="side-label">WORKSPACE</div>
+      <nav aria-label="Primary navigation">
+        <button class="nav-item active" data-view="home"><span class="nav-icon">⌂</span> Dashboard</button>
+        <button class="nav-item" data-view="workout"><span class="nav-icon">◎</span> Live workout</button>
+        <button class="nav-item" data-view="progress"><span class="nav-icon">◴</span> My progress</button>
+        <button class="nav-item" data-view="leaderboard"><span class="nav-icon">♛</span> Leaderboard</button>
+        <button class="nav-item admin-only hidden" data-view="admin"><span class="nav-icon">⚙</span> Manage users</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="prototype-note"><span class="status-pip"></span><span>Educational prototype</span></div>
+        <p>Experimental movement feedback. Not medical or professional training advice.</p>
+        <button id="sign-out" class="text-button hidden">Sign out ↗</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div><div class="eyebrow">EECE 490 / PROJECT 16</div><div class="top-title">Your training, your progress.</div></div>
+        <div class="account-pill"><span class="avatar" id="avatar">G</span><div><strong id="account-name">Guest preview</strong><small id="account-type">Local session · not saved</small></div></div>
+      </header>
+      <div id="global-banner" class="config-banner hidden" role="status"></div>
+      <div id="notice" class="notice hidden" role="status"></div>
+
+      <section id="view-home" class="view">
+        <div class="hero card-surface">
+          <div class="hero-copy"><div class="eyebrow lime">TRAIN SMARTER. PROGRESS TOGETHER.</div>
+          <h1>Every rep <span>counts.</span></h1>
+          <p>Your personal workout space. Get body-landmark feedback from your camera, save your results, and track improvement over time.</p>
+          <button id="hero-start" class="primary-btn">Start a workout <span>→</span></button></div>
+          <div class="hero-art" aria-hidden="true"><div class="art-ring ring-one"></div><div class="art-ring ring-two"></div><div class="art-figure">✳</div><span class="art-label">MOTION TRACKING / LIVE</span></div>
+        </div>
+        <div class="section-title"><div><div class="eyebrow">YOUR SPACE</div><h2>Training overview</h2></div><span class="muted">Progress updates as you train</span></div>
+        <div class="metrics-grid"><div class="stat-card"><span>WORKOUTS SAVED</span><strong id="stat-workouts">—</strong><small>Personal history</small></div><div class="stat-card"><span>BEST RATING</span><strong id="stat-best">—</strong><small>Out of 100</small></div><div class="stat-card"><span>LAST EXERCISE</span><strong class="stat-text" id="stat-last">—</strong><small>Most recent session</small></div></div>
+        <div class="section-title"><div><div class="eyebrow">GET MOVING</div><h2>Choose an exercise</h2></div></div>
+        <div class="exercise-grid">
+          <button class="exercise-card" data-exercise="squat"><div class="exercise-number">01 / STRENGTH</div><div class="exercise-icon">▱</div><h3>Squats</h3><p>Repetition counting and joint-angle guidance.</p><span>Start squats ↗</span></button>
+          <button class="exercise-card" data-exercise="pushup"><div class="exercise-number">02 / UPPER BODY</div><div class="exercise-icon">↔</div><h3>Push-ups</h3><p>Track upper-body reps and movement quality.</p><span>Start push-ups ↗</span></button>
+          <button class="exercise-card" data-exercise="plank"><div class="exercise-number">03 / CORE</div><div class="exercise-icon">━</div><h3>Planks</h3><p>Time your hold and check body alignment.</p><span>Start planks ↗</span></button>
+        </div>
+      </section>
+
+      <section id="view-workout" class="view hidden">
+        <div class="page-heading"><div class="eyebrow">LIVE SESSION</div><h1>Workout studio</h1><p>Place the whole body in the frame, preferably from the side. Camera processing runs in your browser.</p></div>
+        <div class="workout-grid">
+          <div class="camera-card card-surface">
+            <div class="camera-head"><span class="camera-tag"><span class="record-dot"></span> <span id="camera-status">CAMERA OFF</span></span><span id="pose-state">No pose yet</span></div>
+            <div class="camera-stage"><video id="webcam" autoplay muted playsinline></video><canvas id="pose-canvas"></canvas><div id="camera-placeholder" class="camera-placeholder"><div class="camera-symbol">◎</div><h3>Your training starts here</h3><p>Allow camera access when prompted. Face sideways and keep your whole body visible.</p></div></div>
+            <div class="camera-bottom"><span id="coach-feedback">Select an exercise and start the camera.</span><span class="video-info">PRIVATE VIDEO • NOT UPLOADED</span></div>
+          </div>
+          <div class="workout-sidebar">
+            <div class="panel card-surface"><div class="eyebrow">SESSION SETTINGS</div><label class="form-label" for="exercise-select">Exercise</label><select id="exercise-select"><option value="squat">Squats</option><option value="pushup">Push-ups</option><option value="plank">Plank</option></select><label class="form-label" for="target-input">Target <span id="target-unit">repetitions</span></label><input id="target-input" type="number" min="1" max="300" value="10" inputmode="numeric"/><div class="hint">For planks, the target is in seconds.</div><div class="workout-actions"><button id="workout-start" class="primary-btn full">Start camera</button><button id="workout-stop" class="secondary-btn full" disabled>Finish & rate session</button></div></div>
+            <div class="panel card-surface"><div class="eyebrow">LIVE METRICS</div><div class="live-score"><strong id="live-count">0</strong><span id="live-unit">REPETITIONS</span></div><div class="live-rule"></div><div class="live-substat"><span>Time elapsed</span><strong id="live-elapsed">00:00</strong></div><div class="live-substat"><span>Estimated form quality</span><strong id="live-quality">—</strong></div><div class="live-substat"><span>Pose tracking</span><strong id="live-tracking">Waiting</strong></div></div>
+          </div>
+        </div>
+        <p class="disclaimer">Browser workouts currently use experimental pose-landmark and movement heuristics. Dimitri's Windows/Python trained classifiers and advanced features have not yet been fully ported to the browser.</p>
+      </section>
+
+      <section id="view-progress" class="view hidden"><div class="page-heading"><div class="eyebrow">YOUR HISTORY</div><h1>My progress</h1><p>Saved workouts follow your account across devices once the shared database is connected.</p></div><div class="panel card-surface"><div class="list-header"><strong>Recent sessions</strong><span>Score / 100</span></div><div id="history-list" class="history-list"><div class="empty-state">Sign in to see saved workout history.</div></div></div></section>
+
+      <section id="view-leaderboard" class="view hidden"><div class="page-heading"><div class="eyebrow">COMMUNITY</div><h1>Leaderboard</h1><p>Each athlete's highest recorded rating in the selected exercise and period.</p></div><div class="panel card-surface"><div class="filters"><label>Exercise <select id="rank-exercise"><option value="all">All exercises</option><option value="squat">Squats</option><option value="pushup">Push-ups</option><option value="plank">Planks</option></select></label><label>Period <select id="rank-period"><option value="all">All time</option><option value="week">Last 7 days</option><option value="today">Last 24 hours</option></select></label></div><div class="rank-header"><span>RANK / ATHLETE</span><span>BEST SCORE</span></div><div id="leaderboard-list"><div class="empty-state">No saved rankings yet.</div></div></div><p class="disclaimer">Rankings are based on experimental form and target-completion scores, not verified athletic performance. Client-generated scores can be manipulated.</p></section>
+
+      <section id="view-admin" class="view hidden"><div class="page-heading"><div class="eyebrow">ADMINISTRATOR ONLY</div><h1>Manage accounts</h1><p>Review registered athletes. Deleting a user permanently removes their login and saved workout history.</p></div><div class="panel card-surface"><div class="list-header"><strong>Registered users</strong><span>Actions</span></div><div id="admin-users"><div class="empty-state">Admin access required.</div></div></div></section>
+    </main>
+  </div>
+
+  <div id="auth-overlay" class="auth-overlay hidden"><div class="auth-panel card-surface"><div class="eyebrow lime">WELCOME TO MOTION / LAB</div><h1 id="auth-heading">Sign in</h1><p>Use your account to save workouts and join the leaderboard.</p><form id="auth-form"><label for="auth-name" id="name-label" class="form-label hidden">Your name</label><input id="auth-name" class="hidden" type="text" autocomplete="name" placeholder="Your name" minlength="2" maxlength="70"/><label for="auth-email" class="form-label">Email</label><input id="auth-email" type="email" required autocomplete="email" placeholder="you@example.com"/><label for="auth-password" class="form-label">Password</label><input id="auth-password" type="password" required minlength="8" autocomplete="current-password" placeholder="At least 8 characters"/><button class="primary-btn full" id="auth-submit" type="submit">Sign in</button></form><p id="auth-error" class="form-error hidden"></p><button class="text-button auth-switch" id="auth-switch" type="button">New here? Create an account</button><div class="auth-footer">Your camera footage is processed locally, not saved to the database.</div></div></div>
+
+  <dialog id="summary-dialog" class="summary-dialog"><div class="summary-inner"><button class="dialog-close" id="summary-close" aria-label="Close session results">×</button><div class="eyebrow lime">SESSION COMPLETE</div><h2>Workout summary</h2><div class="summary-grade"><strong id="summary-grade">—</strong><span id="summary-rating">0 / 100</span></div><div class="summary-grid"><div><span>Exercise</span><strong id="summary-exercise">—</strong></div><div><span>Completed</span><strong id="summary-completed">—</strong></div><div><span>Form quality</span><strong id="summary-quality">—</strong></div><div><span>Target reached</span><strong id="summary-completion">—</strong></div></div><p id="summary-save-status" class="summary-save"></p><div id="summary-leaders" class="summary-leaders"></div><button class="primary-btn full" id="summary-done">Done</button></div></dialog>
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>

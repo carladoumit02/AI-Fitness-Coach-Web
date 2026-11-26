@@ -1,0 +1,326 @@
+import { createClient } from '@supabase/supabase-js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { clamp, rating, grade, completionPercent, makeCounter, updateCounter, observedCount, formQuality } from './scoring.js';
+
+const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+const api = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const $ = (id) => document.getElementById(id);
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const niceExercise = { squat: 'Squats', pushup: 'Push-ups', plank: 'Plank' };
+const targetDefaults = { squat: 10, pushup: 5, plank: 30 };
+let me = null;
+let profile = null;
+let currentView = 'home';
+let authMode = 'login';
+let active = false;
+let stream = null;
+let landmarker = null;
+let requestId = 0;
+let counter = null;
+let exercise = 'squat';
+let target = 10;
+let startedAt = 0;
+let lastFrame = -1;
+let lastInference = 0;
+let poseModule = null;
+let nextToastTimer;
+
+function toast(message, error = false) {
+  const el = $('notice');
+  el.textContent = message;
+  el.classList.remove('hidden');
+  el.classList.toggle('error', error);
+  clearTimeout(nextToastTimer);
+  nextToastTimer = setTimeout(()=>el.classList.add('hidden'), 6500);
+}
+function showView(view) {
+  if (active && view !== 'workout') { toast('Finish your current workout before leaving the studio.', true); return; }
+  if (view === 'admin' && profile?.role !== 'admin') return;
+  currentView = view;
+  document.querySelectorAll('.view').forEach(el=>el.classList.toggle('hidden', el.id !== `view-${view}`));
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.view === view));
+  if (view === 'progress') void loadHistory();
+  if (view === 'leaderboard') void loadLeaderboard();
+  if (view === 'admin') void loadAdmins();
+}
+function updateIdentity() {
+  const name = profile?.display_name || me?.email?.split('@')[0] || 'Guest preview';
+  $('account-name').textContent = name;
+  $('account-type').textContent = me ? (profile?.role === 'admin' ? 'Administrator' : 'Member · Cloud synced') : 'Local preview · Not saved';
+  $('avatar').textContent = name.slice(0,1).toUpperCase();
+  $('sign-out').classList.toggle('hidden', !me);
+  document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', profile?.role !== 'admin'));
+  if (currentView === 'admin' && profile?.role !== 'admin') showView('home');
+  $('auth-overlay').classList.toggle('hidden', !configured || Boolean(me));
+}
+async function refreshUser() {
+  if (!api) return;
+  const { data: {user}, error } = await api.auth.getUser();
+  if (error && error.name !== 'AuthSessionMissingError') console.warn('Authentication refresh:', error.message);
+  me = user || null;
+  profile = null;
+  if (me) {
+    const r = await api.from('profiles').select('id,display_name,role').eq('id',me.id).maybeSingle();
+    if (r.error) toast(`Profile setup needed: ${r.error.message}`,true);
+    else profile = r.data;
+  }
+  updateIdentity();
+  await loadOverview();
+}
+function switchAuth() {
+  authMode = authMode === 'login' ? 'register' : 'login';
+  const isRegister = authMode === 'register';
+  $('auth-heading').textContent = isRegister ? 'Create an account' : 'Sign in';
+  $('auth-submit').textContent = isRegister ? 'Create account' : 'Sign in';
+  $('auth-name').classList.toggle('hidden', !isRegister);
+  $('name-label').classList.toggle('hidden', !isRegister);
+  $('auth-name').required = isRegister;
+  $('auth-password').autocomplete = isRegister ? 'new-password' : 'current-password';
+  $('auth-switch').textContent = isRegister ? 'Already have an account? Sign in' : 'New here? Create an account';
+  $('auth-error').classList.add('hidden');
+}
+async function submitAuth(event) {
+  event.preventDefault();
+  const email = $('auth-email').value.trim();
+  const password = $('auth-password').value;
+  const name = $('auth-name').value.trim();
+  if (!api) return;
+  $('auth-submit').disabled = true;
+  $('auth-error').classList.add('hidden');
+  try {
+    const result = authMode === 'register'
+      ? await api.auth.signUp({email,password,options:{data:{display_name:name}}})
+      : await api.auth.signInWithPassword({email,password});
+    if (result.error) throw result.error;
+    if (authMode === 'register' && !result.data.session) {
+      toast('Check your email to confirm the account, then sign in.');
+      switchAuth();
+    } else {
+      await refreshUser();
+      toast(`Welcome${name ? `, ${name}` : ''}!`);
+    }
+  } catch(e) {
+    $('auth-error').textContent = e.message || 'Could not authenticate';
+    $('auth-error').classList.remove('hidden');
+  } finally {
+    $('auth-submit').disabled = false;
+  }
+}
+async function loadOverview() {
+  if (!me) {
+    $('stat-workouts').textContent='—';$('stat-best').textContent='—';$('stat-last').textContent='—';
+    return;
+  }
+  const { data, error } = await api.from('workouts').select('exercise,rating,created_at').eq('user_id',me.id).order('created_at',{ascending:false}).limit(500);
+  if (error) { toast(`Unable to load progress: ${error.message}`,true); return; }
+  $('stat-workouts').textContent=String(data.length);
+  $('stat-best').textContent=data.length ? `${Math.max(...data.map(x=>x.rating))}/100` : '—';
+  $('stat-last').textContent=data.length ? niceExercise[data[0].exercise] : '—';
+}
+async function loadHistory() {
+  const root = $('history-list');
+  if (!me) { root.innerHTML='<div class="empty-state">Sign in to save and view your progress.</div>'; return; }
+  root.innerHTML='<div class="empty-state">Loading your sessions…</div>';
+  const {data,error}=await api.from('workouts').select('id,exercise,reps,valid_seconds,rating,form_quality,completion,created_at').eq('user_id',me.id).order('created_at',{ascending:false}).limit(100);
+  if (error) {root.innerHTML=`<div class="empty-state">${escapeHtml(error.message)}</div>`;return;}
+  if (!data.length) {root.innerHTML='<div class="empty-state">No workouts yet. Start one in the studio to see your progress here.</div>';return;}
+  root.innerHTML=data.map(row=>`<div class="history-row"><div><strong>${escapeHtml(niceExercise[row.exercise]||row.exercise)}</strong><small>${new Date(row.created_at).toLocaleString()} · ${row.exercise==='plank'?`${Number(row.valid_seconds).toFixed(1)} sec`:`${row.reps} reps`} · Form ${row.form_quality}%</small></div><div><span class="rank-score">${row.rating}</span><span class="grade-pill">${grade(row.rating)}</span></div></div>`).join('');
+}
+async function loadLeaderboard() {
+  const root=$('leaderboard-list');
+  if (!me) {root.innerHTML='<div class="empty-state">Sign in to see the shared leaderboard.</div>';return;}
+  root.innerHTML='<div class="empty-state">Loading the rankings…</div>';
+  const {data,error}=await api.rpc('get_leaderboard',{p_exercise:$('rank-exercise').value,p_period:$('rank-period').value});
+  if(error){root.innerHTML=`<div class="empty-state">${escapeHtml(error.message)}</div>`;return;}
+  if(!data?.length){root.innerHTML='<div class="empty-state">No workouts recorded for these filters yet.</div>';return;}
+  root.innerHTML=data.map((x,i)=>`<div class="rank-row"><div><span class="rank-position">${i+1 < 10 ? `0${i+1}`:i+1}</span><span class="rank-person">${escapeHtml(x.display_name)}${x.user_id===me.id?' (you)':''}<small>${Number(x.sessions_count)} saved session${Number(x.sessions_count)===1?'':'s'}</small></span></div><div><span class="rank-score">${x.best_score}</span><span class="grade-pill">${grade(x.best_score)}</span></div></div>`).join('');
+}
+async function loadAdmins() {
+  const root=$('admin-users');
+  if(!me || profile?.role!=='admin'){root.innerHTML='<div class="empty-state">Admin access required.</div>';return;}
+  root.innerHTML='<div class="empty-state">Loading accounts…</div>';
+  const {data,error}=await api.rpc('admin_list_users');
+  if(error){root.innerHTML=`<div class="empty-state">${escapeHtml(error.message)}</div>`;return;}
+  root.innerHTML=data.map(row=>`<div class="admin-row"><div><strong>${escapeHtml(row.display_name)}${row.role==='admin'?' · ADMIN':''}</strong><small>${escapeHtml(row.email)} · ${row.workout_count} workouts</small></div>${row.id!==me.id?`<button class="admin-delete" data-delete-id="${row.id}" data-delete-name="${escapeHtml(row.display_name)}">Delete</button>`:'<span class="muted">Current account</span>'}</div>`).join('');
+  root.querySelectorAll('[data-delete-id]').forEach(button=>button.addEventListener('click',async()=>{
+    const name=button.dataset.deleteName, id=button.dataset.deleteId;
+    if(!window.confirm(`Permanently delete ${name} and ALL saved workouts? This cannot be undone.`))return;
+    if(window.prompt(`Type DELETE to confirm deletion of ${name}:`)!=='DELETE')return;
+    button.disabled=true;
+    const {error}=await api.rpc('admin_delete_user',{p_target:id});
+    if(error)toast(`Could not delete user: ${error.message}`,true);
+    else{toast(`Account and saved workouts for ${name} deleted.`);await loadAdmins();}
+    button.disabled=false;
+  }));
+}
+function selectExercise(next) {
+  if(active)return;
+  if(!niceExercise[next])return;
+  exercise=next;
+  target=targetDefaults[next];
+  $('exercise-select').value=next;
+  $('target-input').value=target;
+  $('target-unit').textContent=next==='plank'?'seconds':'repetitions';
+  $('live-unit').textContent=next==='plank'?'VALID SECONDS':'REPETITIONS';
+  showView('workout');
+}
+async function makeLandmarker() {
+  const { PoseLandmarker, FilesetResolver, DrawingUtils } = poseModule ||= await import('@mediapipe/tasks-vision');
+  const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm');
+  const variant=exercise==='plank'?'full':'lite';
+  const modelAssetPath=`https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${variant}/float16/1/pose_landmarker_${variant}.task`;
+  landmarker=await PoseLandmarker.createFromOptions(vision,{
+    baseOptions:{modelAssetPath,delegate:'CPU'},runningMode:'VIDEO',numPoses:1,
+    minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5
+  });
+  return { PoseLandmarker, DrawingUtils };
+}
+let renderer=null;
+async function startWorkout() {
+  if (active) return;
+  if (!navigator.mediaDevices?.getUserMedia) {toast('Webcam access requires HTTPS or localhost and a supported browser.',true);return;}
+  target=Math.trunc(Number($('target-input').value));
+  if(!(target>=1&&target<=300)){toast('Choose a target between 1 and 300.',true);return;}
+  exercise=$('exercise-select').value;
+  $('workout-start').disabled=true;
+  $('camera-status').textContent='STARTING…';
+  try {
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false});
+    const video=$('webcam');
+    video.srcObject=stream;
+    await video.play();
+    renderer=await makeLandmarker();
+    counter=makeCounter(exercise);
+    startedAt=performance.now()/1000;
+    lastFrame=-1;lastInference=0;
+    active=true;
+    $('camera-placeholder').classList.add('hidden');
+    document.querySelector('.record-dot').classList.add('live');
+    $('camera-status').textContent='LIVE SESSION';
+    $('workout-stop').disabled=false;
+    $('exercise-select').disabled=true;
+    $('target-input').disabled=true;
+    setLiveData();
+    requestId=requestAnimationFrame(tick);
+  }catch(e){
+    stopCamera();
+    toast(`Could not start the camera: ${e.message}. Check camera permission and internet access for the pose model.`,true);
+  }
+}
+function tick(timestamp) {
+  if(!active)return;
+  const video=$('webcam');
+  const canvas=$('pose-canvas');
+  if(video.readyState >= 2 && timestamp-lastInference>95 && video.currentTime!==lastFrame){
+    lastInference=timestamp;
+    lastFrame=video.currentTime;
+    try{
+      const result=landmarker.detectForVideo(video,timestamp);
+      const points=result.landmarks?.[0];
+      canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+      const ctx=canvas.getContext('2d');
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      if(points?.length){
+        const drawer=new renderer.DrawingUtils(ctx);
+        drawer.drawConnectors(points,renderer.PoseLandmarker.POSE_CONNECTIONS,{color:'#c6f36b',lineWidth:3});
+        drawer.drawLandmarks(points,{color:'#ffad6a',fillColor:'#ffad6a',radius:3});
+      }
+      const m=getMetrics(points);
+      updateCounter(counter,m,timestamp/1000);
+      $('pose-state').textContent=m?.confidence>=.45?'BODY TRACKED':'MOVE INTO FRAME';
+      setLiveData();
+    }catch(e){
+      console.error(e);
+      toast(`Pose tracking stopped: ${e.message}`,true);
+      stopCamera();return;
+    }
+  }
+  requestId=requestAnimationFrame(tick);
+}
+// Static import keeps this in the same UI thread without uploading camera frames.
+import {getMotionAngles as getMetrics} from './scoring.js';
+function setLiveData(){
+  if(!counter)return;
+  $('live-count').textContent=counter.exercise==='plank'?counter.validSeconds.toFixed(1):String(counter.reps);
+  $('live-elapsed').textContent=formatTime((performance.now()/1000)-startedAt);
+  $('live-quality').textContent=counter.samples?`${formQuality(counter)} / 100`:'—';
+  $('live-tracking').textContent=counter.samples?`${counter.samples} frames`:'Waiting';
+  $('coach-feedback').textContent=counter.feedback;
+}
+function formatTime(seconds){const n=Math.max(0,Math.floor(seconds));return `${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;}
+function stopCamera(){
+  active=false;
+  cancelAnimationFrame(requestId);
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  $('webcam').srcObject=null;
+  if(landmarker){landmarker.close();landmarker=null;}
+  $('pose-canvas').getContext('2d')?.clearRect(0,0,$('pose-canvas').width,$('pose-canvas').height);
+  $('camera-placeholder').classList.remove('hidden');
+  $('workout-start').disabled=false;
+  $('workout-stop').disabled=true;
+  $('exercise-select').disabled=false;
+  $('target-input').disabled=false;
+  document.querySelector('.record-dot').classList.remove('live');
+  $('camera-status').textContent='CAMERA OFF';
+  $('pose-state').textContent='No pose yet';
+}
+async function finishWorkout(){
+  if(!active || !counter)return;
+  const exerciseUsed=counter.exercise;
+  const achieved=observedCount(counter);
+  const quality=formQuality(counter);
+  const completion=completionPercent(achieved,target);
+  const score=rating(quality,completion);
+  stopCamera();
+  $('summary-grade').textContent=grade(score);
+  $('summary-rating').textContent=`${score} / 100`;
+  $('summary-exercise').textContent=niceExercise[exerciseUsed];
+  $('summary-completed').textContent=`${achieved}${exerciseUsed==='plank'?' sec':' reps'}`;
+  $('summary-quality').textContent=`${quality}%`;
+  $('summary-completion').textContent=`${completion}%`;
+  $('summary-leaders').innerHTML='';
+  $('summary-save-status').textContent=me?'Saving your session…':'Preview mode: this session was not saved.';
+  $('summary-dialog').showModal();
+  if(!me)return;
+  const {error}=await api.from('workouts').insert({
+    user_id:me.id,exercise:exerciseUsed,target,reps:exerciseUsed==='plank'?0:Math.round(achieved),
+    valid_seconds:exerciseUsed==='plank'?achieved:0,form_quality:quality,completion,
+  });
+  if(error){$('summary-save-status').textContent=`Could not save session: ${error.message}`;return;}
+  $('summary-save-status').textContent='✓ Session saved to your profile.';
+  await loadOverview();
+  const {data}=await api.rpc('get_leaderboard',{p_exercise:exerciseUsed,p_period:'all'});
+  if(data?.length)$('summary-leaders').innerHTML='<strong>Top leaderboard entries:</strong><div>'+data.slice(0,3).map((row,i)=>`${i+1}. ${escapeHtml(row.display_name)} — ${row.best_score}/100`).join('<div></div>')+'</div>';
+}
+function wireEvents(){
+  document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
+  document.querySelectorAll('.exercise-card').forEach(btn=>btn.addEventListener('click',()=>selectExercise(btn.dataset.exercise)));
+  $('hero-start').addEventListener('click',()=>showView('workout'));
+  $('exercise-select').addEventListener('change',e=>selectExercise(e.target.value));
+  $('workout-start').addEventListener('click',startWorkout);
+  $('workout-stop').addEventListener('click',finishWorkout);
+  $('rank-exercise').addEventListener('change',loadLeaderboard);
+  $('rank-period').addEventListener('change',loadLeaderboard);
+  $('auth-form').addEventListener('submit',submitAuth);
+  $('auth-switch').addEventListener('click',switchAuth);
+  $('sign-out').addEventListener('click',async()=>{if(active)stopCamera();await api?.auth.signOut();me=null;profile=null;updateIdentity();await loadOverview();showView('home');});
+  $('summary-done').addEventListener('click',()=>$('summary-dialog').close());
+  $('summary-close').addEventListener('click',()=>$('summary-dialog').close());
+  window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
+}
+async function init(){
+  wireEvents();
+  showView('home');
+  if(!configured){
+    $('global-banner').textContent='PREVIEW MODE — Webcam analysis is available, but accounts, shared history, and leaderboard require a Supabase project. Follow README.md and supabase/schema.sql to activate them.';
+    $('global-banner').classList.remove('hidden');
+    updateIdentity();
+  }else{
+    api.auth.onAuthStateChange((_event,session)=>{
+      // Avoid Supabase queries inside the auth callback; schedule after auth state settles.
+      setTimeout(()=>{ if(session?.user?.id !== me?.id || !session) void refreshUser(); },0);
+    });
+    await refreshUser();
+  }
+}
+void init();
