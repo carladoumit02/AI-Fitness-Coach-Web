@@ -87,6 +87,9 @@ export function createAdvancedUI(hooks){
     byId('target-input').value=step.target;
     const unit=EXERCISES[step.name]?.unit||'reps';
     byId('target-unit').textContent=unit;
+    // The active preset controls its own exercise and target.
+    byId('exercise-select').disabled=true;
+    byId('target-input').disabled=true;
     byId('advanced-program-live').classList.remove('hidden');
     byId('advanced-program-live').innerHTML=
       '<div class="eyebrow">PROGRAM SESSION</div><strong>'+esc(state.plan.name)+'</strong>'+
@@ -154,6 +157,9 @@ export function createAdvancedUI(hooks){
     byId('advanced-program-live').classList.add('hidden');
     byId('advanced-rest').classList.add('hidden');
     byId('advanced-end-program')?.classList.add('hidden');
+    byId('exercise-select').disabled=false;
+    byId('target-input').disabled=false;
+    byId('workout-start').disabled=false;
     speak(summary.completed?'Workout complete. Review your results.':'Workout ended early. Review your results.',true);
     return {inProgram:true,finished:true,endedEarly,summary};
   }
