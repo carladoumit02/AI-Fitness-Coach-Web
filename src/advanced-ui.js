@@ -13,21 +13,50 @@ export function createAdvancedUI(hooks){
   const store=()=>{
     const user=hooks.getUser?.();return 'motionlab_v3_'+(user?.id||'guest');
   };
+  function updatePrefsDisplay(){
+    for(const key of Object.keys(state.settings)){
+      const checkbox=byId('advanced-'+key);
+      if(checkbox)checkbox.checked=state.settings[key];
+    }
+  }
   function loadPrefs(){
     try {state.settings={voice:false,adaptive:false,calibrate:false,...JSON.parse(localStorage.getItem(store()+'_preferences')||'{}')};}
     catch {state.settings={voice:false,adaptive:false,calibrate:false};}
-    for(const key of Object.keys(state.settings)){const checkbox=byId('advanced-'+key);if(checkbox)checkbox.checked=state.settings[key];}
+    updatePrefsDisplay();
+  }
+  async function syncAccount(){
+    loadPrefs();
+    if(!hooks.getUser())return;
+    try {
+      const [preferences,program,sessions]=await Promise.all([
+        hooks.loadSettings?.(),hooks.loadCustom?.(),hooks.loadProgramHistory?.()
+      ]);
+      if(preferences){
+        state.settings={voice:Boolean(preferences.voice),adaptive:Boolean(preferences.adaptive),calibrate:Boolean(preferences.calibrate)};
+        updatePrefsDisplay();
+        localStorage.setItem(store()+'_preferences',JSON.stringify(state.settings));
+      }
+      if(program?.program)localStorage.setItem(store()+'_custom',JSON.stringify(program.program));
+      if(sessions?.length){
+        state.history=[...state.history,...sessions.map(x=>({program:x.program_name,quality:x.form_quality,completion:x.completion,score:x.rating,created_at:x.created_at}))];
+      }
+    }catch(e){
+      // Previous schema is still usable until extension SQL is installed.
+      console.info('Additional profile preferences not yet synced:',e.message);
+    }
   }
   function savePrefs(){
     for(const key of Object.keys(state.settings))state.settings[key]=Boolean(byId('advanced-'+key)?.checked);
     localStorage.setItem(store()+'_preferences',JSON.stringify(state.settings));
-    hooks.toast?.('Preferences saved for this browser.');
+    if(hooks.getUser())void hooks.saveSettings?.(state.settings).catch(e=>console.info('Settings stored locally:',e.message));
+    hooks.toast?.(hooks.getUser()?'Preferences saved (cloud sync if configured).':'Guest preferences saved in this browser.');
   }
   function getCustom(){
     try{return JSON.parse(localStorage.getItem(store()+'_custom')||'null');}catch{return null;}
   }
   function saveCustom(p){
     localStorage.setItem(store()+'_custom',JSON.stringify(p));state.custom=p;
+    if(hooks.getUser())void hooks.saveCustom?.(p).catch(e=>console.info('Custom plan stored locally:',e.message));
   }
   function setHistory(rows){state.history=Array.isArray(rows)?rows:[];}
   function startPlan(input){
@@ -314,6 +343,6 @@ export function createAdvancedUI(hooks){
     byId('advanced-end-program').onclick=()=>{cancelPlan();hooks.toast?.('Program ended.');};
     loadPrefs();
   }
-  return {render,startPlan,onCompleted,onFrame,onRep,onStop,cancelPlan,cancelRest,loadPrefs,
+  return {render,startPlan,onCompleted,onFrame,onRep,onStop,cancelPlan,cancelRest,loadPrefs,syncAccount,
     setHistory,analytics,replay,comparison,getState:()=>state};
 }
