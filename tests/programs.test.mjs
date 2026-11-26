@@ -2,24 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PRESETS,EXERCISES,validatePlan,adaptPlan,summarizePlan,motionSummary,referencePose,score} from '../src/programs.js';
 
-test('Dimitri preset sequence and rests are preserved exactly',()=>{
+test('workout preset sequence and rests are preserved exactly',()=>{
  assert.deepEqual(PRESETS.map(p=>p.name),['Beginner','Intermediate','Advanced']);
  assert.deepEqual(PRESETS.map(p=>p.exercises.map(x=>x.target)),[[10,5,20],[15,10,40],[25,20,60]]);
  assert.deepEqual(PRESETS.map(p=>p.rest),[30,25,20]);
  assert.deepEqual(PRESETS.map(p=>p.exercises.map(x=>x.name)),
   Array.from({length:3},()=>['squat','pushup','plank']));
 });
-test('all six Dimitri exercises are present',()=>{
- assert.deepEqual(Object.keys(EXERCISES),['squat','pushup','plank','lunge','curl','jack']);
+test('only the three agreed exercises are selectable',()=>{
+ assert.deepEqual(Object.keys(EXERCISES),['squat','pushup','plank']);
 });
 test('builder validates 1..12 sets and target values',()=>{
- assert.equal(validatePlan({name:'Demo',rest:20,exercises:[{name:'curl',target:12}]}).exercises[0].target,12);
+ assert.equal(validatePlan({name:'Demo',rest:20,exercises:[{name:'pushup',target:12}]}).exercises[0].target,12);
  assert.throws(()=>validatePlan({name:'',rest:20,exercises:[{name:'squat',target:1}]}));
  assert.throws(()=>validatePlan({name:'X',rest:1,exercises:[]}));
  assert.throws(()=>validatePlan({name:'X',rest:1,exercises:Array.from({length:13},()=>({name:'squat',target:5}))}));
  assert.throws(()=>validatePlan({name:'X',rest:1,exercises:[{name:'plank',target:0}]}));
 });
-test('adaptive follows Dimitri V2 quality and target logic',()=>{
+test('adaptive follows workout quality and target logic',()=>{
  const p=PRESETS[0];const a=adaptPlan(p,[{program:'Beginner',quality:65,completion:100}]);
  assert.deepEqual(a.plan.exercises.map(x=>x.target),[9,4,17]);
  assert.equal(a.plan.rest,40);
@@ -27,7 +27,7 @@ test('adaptive follows Dimitri V2 quality and target logic',()=>{
  assert.deepEqual(b.plan.exercises.map(x=>x.target),[11,6,22]);
  assert.equal(p.exercises[0].target,10);
 });
-test('program grade and summary use original V3 scoring formula',()=>{
+test('program grade and summary use  scoring formula',()=>{
  const out=summarizePlan(PRESETS[0],[
  {reps:10,observed:10,goodSeconds:9,completion:100,score:90},
  {reps:5,observed:10,goodSeconds:8,completion:100,score:80},
@@ -41,7 +41,7 @@ test('motion analytics only label decline as a heuristic',()=>{
  assert.equal(motionSummary(rows).performance_change.decline,true);
  assert.equal(motionSummary(rows).avg_tempo,1.4);
 });
-test('reference skeleton coordinates can be drawn for all six exercises',()=>{
+test('reference skeleton coordinates can be drawn for three exercises',()=>{
  for(const code of Object.keys(EXERCISES)){
    const obj=referencePose(code,.5);
    assert.ok(Object.keys(obj).length>=6);
