@@ -36,6 +36,9 @@ let recognitionHint='';
 let recognitionMode=false;
 let recognizedExercise=null;
 let recognitionStreak=0;
+let sessionPhase='idle';
+let readySince=null;
+let countdownUntil=0;
 
 function toast(message, error = false) {
   const el = $('notice');
@@ -234,6 +237,7 @@ async function startWorkout() {
     startedAt=performance.now()/1000;
     lastFrame=-1;lastInference=0;
     active=true;paused=false;
+    sessionPhase=recognitionMode?'active':'position';readySince=null;countdownUntil=0;
     $('camera-placeholder').classList.add('hidden');
     document.querySelector('.record-dot').classList.add('live');
     $('camera-status').textContent='LIVE SESSION';
@@ -269,6 +273,40 @@ function tick(timestamp) {
         drawer.drawLandmarks(points,{color:'#ffad6a',fillColor:'#ffad6a',radius:3});
       }
       const oldReps=counter?.reps??0;
+      if(!recognitionMode && sessionPhase!=='active'){
+        const m=['lunge','curl','jack'].includes(exercise)?extraMetrics(points,exercise):getMetrics(points);
+        const confidence=m?.[exercise==='squat'?'squatConfidence':exercise==='pushup'?'pushupConfidence':'plankConfidence']??m?.confidence??0;
+        const knee=Number(m?.knee),elbow=Number(m?.elbow);
+        const ready=confidence>=.45 && (
+          exercise==='squat'?knee>145:
+          exercise==='pushup'?elbow>135:
+          exercise==='plank'?Number(m?.alignment)>150:
+          ['lunge','curl','jack'].includes(exercise)?true:false
+        );
+        if(sessionPhase==='position'){
+          readySince=ready?(readySince??timestamp):null;
+          if(ready&&timestamp-readySince>=600){
+            sessionPhase='countdown';countdownUntil=timestamp+3000;
+          }
+        }else if(sessionPhase==='countdown'){
+          if(!ready){sessionPhase='position';readySince=null;}
+          else if(timestamp>=countdownUntil){
+            sessionPhase='active';
+            startedAt=performance.now()/1000;
+            if(counter)counter.lastTime=null;
+          }
+        }
+        if(sessionPhase!=='active'){
+          $('camera-status').textContent=sessionPhase==='countdown'?'GET READY':'FIND START POSITION';
+          $('coach-feedback').textContent=sessionPhase==='countdown'?
+            ('Starting in '+Math.max(1,Math.ceil((countdownUntil-timestamp)/1000))+'…'):
+            ('Hold your starting position in the '+(EXERCISES[exercise]?.view||'recommended')+' view.');
+          $('pose-state').textContent=ready?'READY':'ADJUST POSITION';
+          requestId=requestAnimationFrame(tick);
+          return;
+        }
+        $('camera-status').textContent='LIVE SESSION';
+      }
       if(recognitionMode){
         const detected=recognizeExercise(points);
         const candidate=detected.exercise==='idle'?null:detected.exercise;
@@ -324,13 +362,15 @@ function togglePause(){
   if(!paused){paused=true;pausedAt=performance.now();$('camera-status').textContent='PAUSED';}
   else{
     paused=false;startedAt+=(performance.now()-pausedAt)/1000;
+    if(sessionPhase==='countdown')countdownUntil+=performance.now()-pausedAt;
+    if(sessionPhase==='position')readySince=null;
     if(counter)counter.lastTime=null;
     $('camera-status').textContent='LIVE SESSION';
   }
 }
 function stopCamera(){
   advanced?.onStop();
-  active=false;paused=false;
+  active=false;paused=false;sessionPhase='idle';readySince=null;
   if(recognitionMode){
     recognitionMode=false;recognizedExercise=null;recognitionStreak=0;
     $('advanced-auto-info')?.classList.add('hidden');
