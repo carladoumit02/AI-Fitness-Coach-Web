@@ -41,6 +41,7 @@ let sessionPhase='idle';
 let readySince=null;
 let countdownUntil=0;
 let finishingWorkout=false;
+let lastExport=null;
 
 function toast(message, error = false) {
   const el = $('notice');
@@ -417,6 +418,9 @@ async function finishWorkout({automatic=false}={}){
   const outcome=advanced?.onCompleted(detail,{endedEarly})||{inProgram:false,finished:reached,endedEarly};
   const full=outcome.summary;
   const showResults=!outcome.inProgram||outcome.finished;
+  if(showResults)lastExport=full?
+    {...full,endedEarly,exportedAt:new Date().toISOString(),educationalPrototype:true}:
+    {...detail,endedEarly,exportedAt:new Date().toISOString(),educationalPrototype:true};
   if(outcome.inProgram && !outcome.finished){
     // Completing a guided-program set automatically starts the rest timer.
     // Do not interrupt that rest with a blocking dialog.
@@ -489,6 +493,15 @@ function wireEvents(){
     }
   });
   $('summary-close').addEventListener('click',()=>$('summary-dialog').close());
+  $('summary-export').addEventListener('click',()=>{
+    if(!lastExport)return;
+    const filename='fitness-workout-'+new Date().toISOString().slice(0,10)+'.json';
+    const blob=new Blob([JSON.stringify(lastExport,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const anchor=document.createElement('a');anchor.href=url;anchor.download=filename;
+    document.body.appendChild(anchor);anchor.click();anchor.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
+  });
   window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop());});
 }
 async function init(){
