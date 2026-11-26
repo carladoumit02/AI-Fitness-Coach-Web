@@ -34,3 +34,11 @@
 .advanced-comparison-grid span{font-size:11px;color:#b8c6c4;letter-spacing:.07em}
 .advanced-comparison-grid canvas{width:100%;border-radius:9px;background:#0c171d}
 @media(max-width:700px){.advanced-comparison-grid{grid-template-columns:1fr}}
+
+/* Clear, accessible account setup help and compact password toggle. */
+.auth-help{margin:12px 0!important;padding:12px 14px;background:#1c352b;border:1px solid #517a50;border-radius:10px;color:#dcf5d2!important;font-size:12px!important;line-height:1.65!important}
+.auth-password-option{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:#b9cfca;cursor:pointer}
+.auth-password-option input{width:16px;height:16px;margin:0;accent-color:#c6f36b}
+#auth-resend{margin-top:8px;text-align:left}
+.auth-overlay .auth-panel{max-height:95dvh;overflow:auto}
+.workout-actions .secondary-btn{font-weight:700}
