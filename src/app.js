@@ -7,6 +7,7 @@ import { extraMetrics, updateExtraCounter, recognizeExercise } from './extra-exe
 import { shouldAutoFinish, workoutCompletionLabel, setCompletionLabel } from './session-flow.js';
 
 const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+const siteRedirect = new URL(import.meta.env.BASE_URL, window.location.origin).href;
 const api = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -91,7 +92,7 @@ async function refreshUser() {
   await loadOverview();
   if(me)void advanced?.syncAccount();
 }
-function switchAuth() {
+function switchAuth({keepHelp=false}={}) {
   authMode = authMode === 'login' ? 'register' : 'login';
   const isRegister = authMode === 'register';
   $('auth-heading').textContent = isRegister ? 'Create an account' : 'Sign in';
@@ -102,34 +103,64 @@ function switchAuth() {
   $('auth-password').autocomplete = isRegister ? 'new-password' : 'current-password';
   $('auth-switch').textContent = isRegister ? 'Already have an account? Sign in' : 'New here? Create an account';
   $('auth-error').classList.add('hidden');
+  if(!keepHelp){$('auth-help').classList.add('hidden');$('auth-resend').classList.add('hidden');}
 }
 async function submitAuth(event) {
   event.preventDefault();
-  const email = $('auth-email').value.trim();
-  const password = $('auth-password').value;
-  const name = $('auth-name').value.trim();
-  if (!api) return;
-  $('auth-submit').disabled = true;
-  $('auth-error').classList.add('hidden');
-  try {
-    const result = authMode === 'register'
-      ? await api.auth.signUp({email,password,options:{data:{display_name:name}}})
-      : await api.auth.signInWithPassword({email,password});
-    if (result.error) throw result.error;
-    if (authMode === 'register' && !result.data.session) {
-      toast('Check your email to confirm the account, then sign in.');
-      switchAuth();
-    } else {
-      await refreshUser();
-      toast(`Welcome${name ? `, ${name}` : ''}!`);
-    }
-  } catch(e) {
-    $('auth-error').textContent = e.message || 'Could not authenticate';
-    $('auth-error').classList.remove('hidden');
-  } finally {
-    $('auth-submit').disabled = false;
+  const email=$('auth-email').value.trim().toLowerCase();
+  const password=$('auth-password').value;
+  const name=$('auth-name').value.trim();
+  if(!api)return;
+  if(authMode==='register' && name.length<2){
+    showAuthError('Enter a name of at least 2 characters.');return;
   }
+  $('auth-submit').disabled=true;
+  $('auth-error').classList.add('hidden');
+  $('auth-help').classList.add('hidden');
+  try {
+    const result=authMode==='register'
+      ? await api.auth.signUp({
+          email,password,options:{data:{display_name:name},emailRedirectTo:siteRedirect}
+        })
+      : await api.auth.signInWithPassword({email,password});
+    if(result.error)throw result.error;
+    if(authMode==='register'&&!result.data.session){
+      $('auth-help').textContent='Account request received. Check your inbox (and spam folder) for a confirmation link, then return here to sign in. If it does not arrive, use Resend confirmation email.';
+      $('auth-help').classList.remove('hidden');
+      $('auth-resend').classList.remove('hidden');
+      switchAuth({keepHelp:true});
+    }else{
+      await refreshUser();
+      toast('Signed in successfully. Welcome'+(name?', '+name:'')+'!');
+    }
+  }catch(error){
+    let message=error.message||'Unable to connect to the account service.';
+    if(/email not confirmed/i.test(message)){
+      message='Please confirm your email before signing in. Check your inbox and spam folder, or resend the confirmation link.';
+      $('auth-resend').classList.remove('hidden');
+    }else if(/invalid login credentials/i.test(message))message='Email or password is incorrect. If you just registered, first confirm your email.';
+    else if(/rate limit|too many requests/i.test(message))message='Too many attempts. Please try later, or ask the project administrator to check email delivery.';
+    showAuthError(message);
+  }finally{$('auth-submit').disabled=false;}
 }
+function showAuthError(message){
+  $('auth-error').textContent=message;
+  $('auth-error').classList.remove('hidden');
+}
+async function resendConfirmation(){
+  if(!api)return;
+  const email=$('auth-email').value.trim().toLowerCase();
+  if(!email){showAuthError('Enter your email address above first.');return;}
+  $('auth-resend').disabled=true;
+  try{
+    const {error}=await api.auth.resend({type:'signup',email,options:{emailRedirectTo:siteRedirect}});
+    if(error)throw error;
+    $('auth-help').textContent='If an account is awaiting verification, another confirmation email has been requested. Check your inbox and spam folder.';
+    $('auth-help').classList.remove('hidden');$('auth-error').classList.add('hidden');
+  }catch(error){showAuthError(error.message||'Unable to resend confirmation.');}
+  finally{$('auth-resend').disabled=false;}
+}
+
 async function loadOverview() {
   if (!me) {
     $('stat-workouts').textContent='—';$('stat-best').textContent='—';$('stat-last').textContent='—';
@@ -394,7 +425,7 @@ function stopCamera(){
   $('pose-state').textContent='No pose yet';
 }
 async function finishWorkout({automatic=false}={}){
-  if(recognitionMode){toast('Confirm the detected exercise before starting a workout.',true);return;}
+  if(recognitionMode){toast('Select an exercise before starting.',true);return;}
   if(!active || !counter || finishingWorkout)return;
   finishingWorkout=true;
   const reached=shouldAutoFinish(counter,target,sessionPhase,false);
@@ -468,7 +499,8 @@ function wireEvents(){
   $('rank-exercise').addEventListener('change',loadLeaderboard);
   $('rank-period').addEventListener('change',loadLeaderboard);
   $('auth-form').addEventListener('submit',submitAuth);
-  $('auth-switch').addEventListener('click',switchAuth);
+  $('auth-switch').addEventListener('click',()=>switchAuth());
+  $('auth-resend').addEventListener('click',resendConfirmation);
   $('guest-start').addEventListener('click',()=>{
     guestMode=true;
     updateIdentity();
