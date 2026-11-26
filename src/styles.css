@@ -29,3 +29,8 @@
 .advanced-bar{flex:1;max-width:65px;background:#c6f36b;border-radius:5px 5px 0 0;min-height:4px}
 @media(max-width:1100px){.advanced-program-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.advanced-program-grid{grid-template-columns:1fr}.advanced-settings{display:grid}}
+
+.advanced-comparison-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:12px 0}
+.advanced-comparison-grid span{font-size:11px;color:#b8c6c4;letter-spacing:.07em}
+.advanced-comparison-grid canvas{width:100%;border-radius:9px;background:#0c171d}
+@media(max-width:700px){.advanced-comparison-grid{grid-template-columns:1fr}}
