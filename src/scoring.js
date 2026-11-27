@@ -63,10 +63,12 @@ export function updateCounter(counter, metrics, nowSeconds) {
   const raw = counter.exercise === 'squat' ? metrics.knee : metrics.elbow;
   if (!isPlank && !Number.isFinite(raw)) return counter;
   let quality = 0;
+  const ramp = (value, low, high) => clamp((value-low)/(high-low),0,1);
   if (isPlank) {
     const aligned = Number.isFinite(metrics.alignment) && Number.isFinite(metrics.plankKnee) && metrics.alignment >= 160 && metrics.plankKnee >= 150;
     if (aligned) counter.validSeconds += elapsed;
-    quality = aligned ? 92 : 48;
+    if (!Number.isFinite(metrics.alignment) || !Number.isFinite(metrics.plankKnee)) return counter;
+    quality = 100 * (0.7*ramp(metrics.alignment,120,175) + 0.3*ramp(metrics.plankKnee,110,170));
     counter.feedback = aligned ? 'Good alignment — keep holding.' : 'Adjust hips and straighten your legs.';
   } else {
     counter.angles.push(raw);
@@ -74,14 +76,37 @@ export function updateCounter(counter, metrics, nowSeconds) {
     const angle = median(counter.angles);
     const down = counter.calibration?.down ?? (counter.exercise === 'squat' ? 115 : 100);
     const up = counter.calibration?.up ?? 155;
+    // Evaluate movement excursion per repetition, not time spent in each phase.
+    const attempt = counter.attempt ??= {top:angle,bottom:angle,alignmentSum:0,alignmentCount:0};
+    attempt.top=Math.max(attempt.top,angle);
+    attempt.bottom=Math.min(attempt.bottom,angle);
+    if(counter.exercise==='pushup' && Number.isFinite(metrics.alignment) &&
+       (metrics.plankConfidence ?? metrics.confidence ?? 0)>=0.45){
+      attempt.alignmentSum+=ramp(metrics.alignment,120,175);
+      attempt.alignmentCount++;
+    }
+    const scoreAttempt = a => {
+      const depth = 1-ramp(a.bottom,counter.exercise==='squat'?90:85,140);
+      const extension = ramp(a.top,140,170);
+      const rangeScore = 100*(0.7*depth+0.3*extension);
+      return a.alignmentCount ? 0.6*rangeScore+40*a.alignmentSum/a.alignmentCount : rangeScore;
+    };
     if (counter.state === 'ready' && angle <= down) counter.state = 'down';
-    else if (counter.state === 'down' && angle >= up) { counter.state = 'ready'; counter.reps++; }
+    else if (counter.state === 'down' && angle >= up) {
+      counter.state = 'ready'; counter.reps++;
+      counter.repQualityTotal=(counter.repQualityTotal??0)+scoreAttempt(attempt);
+      counter.attempt={top:angle,bottom:angle,alignmentSum:0,alignmentCount:0};
+    }
     counter.feedback = counter.state === 'down' ? 'Push back up to complete the rep.' : 'Lower with control.';
-    quality = (angle >= 60 && angle <= 180) ? (counter.state === 'down' ? 90 : 82) : 55;
+    quality = scoreAttempt(attempt);
   }
   counter.samples++;
   counter.qualityTotal += quality;
   return counter;
 }
-export function formQuality(counter) { return counter.samples ? Math.round(counter.qualityTotal / counter.samples) : 0; }
+export function formQuality(counter) {
+  if (counter.exercise !== 'plank' && counter.reps && Number.isFinite(counter.repQualityTotal)) return Math.round(counter.repQualityTotal/counter.reps);
+  if (counter.attempt && !counter.reps) return 0; // no completed repetition to grade yet
+  return counter.samples ? Math.round(counter.qualityTotal / counter.samples) : 0;
+}
 export function observedCount(counter) {return counter.exercise==='plank' ? Math.round(counter.validSeconds * 10)/10 : counter.reps;}
