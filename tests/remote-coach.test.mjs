@@ -26,3 +26,5 @@ test('Countdown and spoken direction are clear',()=>{
  const cue=activityCue({exercise:'squat',phase:'countdown',frame:assessFrame(pose(),'squat'),ready:true,seconds:2.1});
  assert.equal(cue.title,'3');assert.ok(cueForVoice(cue));
 });
+
+test('small full-body pose asks user to move closer',()=>{const p=pose();for(const v of p){v.x=.5+(v.x-.5)*.25;v.y=.5+(v.y-.5)*.25;}assert.equal(assessFrame(p,'squat').title,'MOVE CLOSER');});

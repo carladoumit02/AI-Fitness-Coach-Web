@@ -40,7 +40,7 @@ export function assessFrame(points,exercise='squat'){
     const torso=shoulders[0];
     const foot=ankles[0];
     if(Math.hypot(torso.x-foot.x,torso.y-foot.y)<.25)
-      return {kind:'far',title:'STEP BACK',detail:'Give the camera a clearer full-body view.'};
+      return {kind:'adjust',title:'MOVE CLOSER',detail:'Move closer while keeping your entire body in view.'};
   }
   return {kind:'ready',title:'BODY IN FRAME',detail:VIEWS[exercise]||VIEWS.squat};
 }

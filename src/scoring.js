@@ -27,8 +27,11 @@ export function bestSide(points, names) {
   const score = side => side.reduce((total,p)=>total+(p?.visibility ?? 0),0);
   return score(right) > score(left) ? right : left;
 }
-export function getMotionAngles(points) {
+export function getMotionAngles(points, aspectRatio=1) {
   if (!points || points.length < 29) return null;
+  // MediaPipe x/y are normalized by different image dimensions.
+  const ratio=Number.isFinite(aspectRatio)&&aspectRatio>0?aspectRatio:1;
+  points=points.map(p=>p?{...p,x:p.x*ratio}:p);
   const [hip, knee, ankle] = bestSide(points, ['hip','knee','ankle']);
   const [shoulder, elbow, wrist] = bestSide(points, ['shoulder','elbow','wrist']);
   const [plankShoulder, plankHip, plankAnkle] = bestSide(points, ['shoulder','hip','ankle']);
@@ -52,30 +55,44 @@ function median(values) {
   return a[Math.floor(a.length / 2)];
 }
 export function updateCounter(counter, metrics, nowSeconds) {
-  const elapsed = counter.lastTime == null ? 0 : clamp(nowSeconds - counter.lastTime, 0, 0.25);
+  const gap = counter.lastTime == null ? 0 : nowSeconds-counter.lastTime;
+  const elapsed = gap>0 && gap<=0.5 ? Math.min(gap,0.25) : 0;
   counter.lastTime = nowSeconds;
   const confidence = metrics?.[counter.exercise === 'plank' ? 'plankConfidence' : counter.exercise === 'squat' ? 'squatConfidence' : 'pushupConfidence'] ?? metrics?.confidence;
-  if (!metrics || confidence < 0.45) {
+  const loseTracking = () => {
     counter.feedback = 'Keep your full body visible.';
+    counter.lastTime=null;
+    counter.previousAligned=false;
+    counter.angles=[];
+    counter.attempt=null;
+    counter.state='ready';
+    counter.needsTop=true;
     return counter;
-  }
+  };
+  if (!metrics || !Number.isFinite(confidence) || confidence < 0.45) return loseTracking();
+  if(gap>0.5){loseTracking();counter.lastTime=nowSeconds;}
   const isPlank = counter.exercise === 'plank';
   const raw = counter.exercise === 'squat' ? metrics.knee : metrics.elbow;
-  if (!isPlank && !Number.isFinite(raw)) return counter;
+  if (!isPlank && !Number.isFinite(raw)) return loseTracking();
   let quality = 0;
   const ramp = (value, low, high) => clamp((value-low)/(high-low),0,1);
   if (isPlank) {
     const aligned = Number.isFinite(metrics.alignment) && Number.isFinite(metrics.plankKnee) && metrics.alignment >= 160 && metrics.plankKnee >= 150;
-    if (aligned) counter.validSeconds += elapsed;
-    if (!Number.isFinite(metrics.alignment) || !Number.isFinite(metrics.plankKnee)) return counter;
+    if (!Number.isFinite(metrics.alignment) || !Number.isFinite(metrics.plankKnee)) return loseTracking();
+    if (aligned && counter.previousAligned) counter.validSeconds += elapsed;
+    counter.previousAligned=aligned;
     quality = 100 * (0.7*ramp(metrics.alignment,120,175) + 0.3*ramp(metrics.plankKnee,110,170));
-    counter.feedback = aligned ? 'Good alignment — keep holding.' : 'Adjust hips and straighten your legs.';
+    counter.feedback = aligned ? 'Good alignment — keep holding.' : metrics.plankKnee<150 ? 'Straighten your legs.' : 'Align your shoulders, hips and ankles.';
   } else {
     counter.angles.push(raw);
     if (counter.angles.length > 3) counter.angles.shift();
     const angle = median(counter.angles);
     const down = counter.calibration?.down ?? (counter.exercise === 'squat' ? 115 : 100);
     const up = counter.calibration?.up ?? 155;
+    if(counter.needsTop){
+      if(angle<up){counter.feedback='Return to the starting position.';return counter;}
+      counter.needsTop=false;counter.attempt=null;
+    }
     // Evaluate movement excursion per repetition, not time spent in each phase.
     const attempt = counter.attempt ??= {top:angle,bottom:angle,alignmentSum:0,alignmentCount:0};
     attempt.top=Math.max(attempt.top,angle);
@@ -97,7 +114,7 @@ export function updateCounter(counter, metrics, nowSeconds) {
       counter.repQualityTotal=(counter.repQualityTotal??0)+scoreAttempt(attempt);
       counter.attempt={top:angle,bottom:angle,alignmentSum:0,alignmentCount:0};
     }
-    counter.feedback = counter.state === 'down' ? 'Push back up to complete the rep.' : 'Lower with control.';
+    counter.feedback = counter.state === 'down' ? (counter.exercise==='squat'?'Stand up to complete the rep.':'Extend your arms to complete the rep.') : (counter.exercise==='squat'?'Bend your knees and lower with control.':'Bend your elbows and lower with control.');
     quality = scoreAttempt(attempt);
   }
   counter.samples++;
@@ -106,7 +123,7 @@ export function updateCounter(counter, metrics, nowSeconds) {
 }
 export function formQuality(counter) {
   if (counter.exercise !== 'plank' && counter.reps && Number.isFinite(counter.repQualityTotal)) return Math.round(counter.repQualityTotal/counter.reps);
-  if (counter.attempt && !counter.reps) return 0; // no completed repetition to grade yet
+  if (counter.exercise!=='plank' && !counter.reps && ['squat','pushup'].includes(counter.exercise)) return 0; // no completed repetition to grade yet
   return counter.samples ? Math.round(counter.qualityTotal / counter.samples) : 0;
 }
 export function observedCount(counter) {return counter.exercise==='plank' ? Math.round(counter.validSeconds * 10)/10 : counter.reps;}
