@@ -125,3 +125,17 @@ Changes pushed to `main` trigger GitHub Actions to run tests, build the Vite app
 
 **Website:** https://carladoumit02.github.io/AI-Fitness-Coach-Web/  
 **Short link:** https://tinyurl.com/motionlab490
+
+## Recorded-video form evaluation
+
+The browser uses a pretrained MediaPipe pose detector. Joint angles and movement states drive repetition counting and coaching. The offline SVMs consume whole-video summaries. Their inputs require a completed clip, so the live interface uses its frame-by-frame rules.
+
+The participant-held-out study evaluated 150 squat clips (25 people) and 143 push-up clips (24 people). A fixed RBF SVM classified 96 clips correctly in each exercise, for 64.00% and 67.13% accuracy respectively. One push-up in the manifest lacked a cached sequence. View-specific models scored 62.00% and 68.53%. This dataset had already informed development. The independent webcam accuracy remains unknown.
+
+To reproduce the pooled results with the project Drive files, install numpy, pandas, scikit-learn and joblib. Run the following command from the repository root, replacing PROJECT with the path to EECE490_Fitness_Coach_Work.
+
+```sh
+python research/evaluate.py PROJECT/dataset/manifest.csv PROJECT/outputs/temporal_sequence_audit/resampled_joint_sequences_96.joblib results
+```
+
+The output includes out-of-fold predictions, confusion matrices, per-class metrics and full-data pipelines. The separate recorded plank evaluation classified 702 of 710 landmark samples correctly. The web plank timer checks body alignment directly.

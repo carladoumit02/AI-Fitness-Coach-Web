@@ -57,6 +57,7 @@ export function updateCounter(counter, metrics, nowSeconds) {
   const confidence = metrics?.[counter.exercise === 'plank' ? 'plankConfidence' : counter.exercise === 'squat' ? 'squatConfidence' : 'pushupConfidence'] ?? metrics?.confidence;
   if (!metrics || confidence < 0.45) {
     counter.feedback = 'Keep your full body visible.';
+    counter.partialDescent = false;
     return counter;
   }
   const isPlank = counter.exercise === 'plank';
@@ -77,6 +78,17 @@ export function updateCounter(counter, metrics, nowSeconds) {
     if (counter.state === 'ready' && angle <= down) counter.state = 'down';
     else if (counter.state === 'down' && angle >= up) { counter.state = 'ready'; counter.reps++; }
     counter.feedback = counter.state === 'down' ? 'Push back up to complete the rep.' : 'Lower with control.';
+    if (counter.exercise === 'squat') {
+      // Display the depth cue only after a visible partial descent and return.
+      if (counter.state === 'down') counter.partialDescent = false;
+      else if (angle > down && angle < up - 15) counter.partialDescent = true;
+      else if (angle >= up && counter.partialDescent) {
+        counter.partialDescent = false;
+        counter.depthCueUntil = nowSeconds + 2;
+      }
+      if (counter.state === 'down') counter.depthCueUntil = 0;
+      if (nowSeconds < counter.depthCueUntil) counter.feedback = 'Rep incomplete. Lower a little further on the next squat.';
+    }
     quality = (angle >= 60 && angle <= 180) ? (counter.state === 'down' ? 90 : 82) : 55;
   }
   counter.samples++;
