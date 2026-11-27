@@ -326,7 +326,7 @@ function tick(timestamp) {
       }
       const oldReps=counter?.reps??0;
       if(!recognitionMode && sessionPhase!=='active'){
-        const m=['lunge','curl','jack'].includes(exercise)?extraMetrics(points,exercise):getMetrics(points);
+        const m=['lunge','curl','jack'].includes(exercise)?extraMetrics(points,exercise):getMetrics(points,video.videoWidth/video.videoHeight);
         const confidence=m?.[exercise==='squat'?'squatConfidence':exercise==='pushup'?'pushupConfidence':'plankConfidence']??m?.confidence??0;
         const knee=Number(m?.knee),elbow=Number(m?.elbow);
         const ready=confidence>=.45 && (
@@ -379,7 +379,7 @@ function tick(timestamp) {
         requestId=requestAnimationFrame(tick);
         return;
       }
-      const m=['lunge','curl','jack'].includes(exercise)?extraMetrics(points,exercise):getMetrics(points);
+      const m=['lunge','curl','jack'].includes(exercise)?extraMetrics(points,exercise):getMetrics(points,video.videoWidth/video.videoHeight);
       if(['lunge','curl','jack'].includes(exercise))updateExtraCounter(counter,m,timestamp/1000);
       else updateCounter(counter,m,timestamp/1000);
       advanced?.onFrame(points,m,counter,timestamp/1000);
@@ -412,7 +412,7 @@ function setLiveData(){
   if(!counter)return;
   $('live-count').textContent=counter.exercise==='plank'?counter.validSeconds.toFixed(1):String(counter.reps);
   $('live-elapsed').textContent=formatTime((performance.now()/1000)-startedAt);
-  $('live-quality').textContent=counter.samples?`${formQuality(counter)} / 100`:'—';
+  $('live-quality').textContent=(counter.exercise==='plank'?counter.samples:counter.reps)?`${formQuality(counter)} / 100`:'—';
   $('live-tracking').textContent=counter.samples?`${counter.samples} frames`:'Waiting';
   $('coach-feedback').textContent=counter.feedback;
   const status = $('advanced-recognition-status');
